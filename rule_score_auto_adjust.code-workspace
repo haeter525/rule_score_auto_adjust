@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../generate_rules"
+		}
+	],
+	"settings": {},
+	"extensions": {
+		"recommendations": [
+			"ms-python.python"
+		]
+	}
+}
