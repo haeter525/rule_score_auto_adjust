@@ -2,17 +2,24 @@
 import datetime
 from pathlib import Path
 from typing import Callable, Generator
+import os
+from tqdm.auto import tqdm
+import dotenv
+dotenv.load_dotenv()
 
 PATH_TO_DATASET = [
     "data/dataset/benignAPKs_top_0.4_vt_scan_date_415d3ec3d4e0bf95e16d93649eab516b430abf4953d28617046cc998e391a6da.csv",
     "data/dataset/maliciousAPKs_top_0.4_vt_scan_date_83d140381a28bc311b0423852b44efe3b6b859a8b6be7c6dac21fa9f0a833141.csv"
 ]
-PATH_TO_RULES = "data/rule_top_1000"
+# PATH_TO_RULES = "data/rule_top_1000"
 PATH_TO_REPORTS = "data/reports"
-PATH_TO_CONFIDENCES = "data/confidences"
-NUM_OF_RULES = sum(1 for _ in Path(PATH_TO_RULES).glob("[!.]*.json"))
-print(f"Load rules from {PATH_TO_RULES}")
+PATH_TO_RULE_LIST = "/mnt/storage/data/rule_list/selected_rules_result_on_benign.csv"
+PATH_TO_RULE_FOLDER = "/mnt/storage/data/generated_rules"
+PATH_TO_CONFIDENCES = "/mnt/storage/data/dataset/20250409/confidences"
+NUM_OF_RULES = int(input("Num of rule?"))
+# print(f"Load rules from {PATH_TO_RULES}")
 print(f"Num of rules: {NUM_OF_RULES}")
+
 
 # %%
 # Build APK List
@@ -54,7 +61,7 @@ print(f"Num of apk: {len(sha256_list)}")
 
 # %%
 # 確認 Quark 分析結果都在
-PATH_TO_ANALYSIS_RESULT = Path("data/analysis_results")
+PATH_TO_ANALYSIS_RESULT = Path(os.getenv("ANALYSIS_RESULT_FOLDER"))
 
 get_analysis_report_path = lambda sha256: PATH_TO_ANALYSIS_RESULT / f"{sha256}.apk_progress.json"
 
@@ -78,6 +85,7 @@ apk_not_missing = [
 ]
 
 def read_from_json(path: Path):
+    import json
     with path.open("r") as file:
         content = json.load(file)
     return content
@@ -114,18 +122,19 @@ for path in get_analysis_report_path_list():
 if len(read_json_error) != 0:
     print(f"{len(read_json_error)} analysis report are not in proper JSON format. Check `read_json_error` for more details.")
 
+    if input("Remove those files?(Y/n)") == 'Y':
+        for p in read_json_error:
+            print(f"Delete {p}")
+            p.unlink()
 # %%
-
-def convert_to_confidence(analysis_report_json):
-    return {
-        items[0]: items[1] 
-        for items in analysis_report_json # rule_path, confidence
-        if len(items) >= 2
-    }
+from common import load_analysis_result
 
 get_confidence_contents = lambda: (
-    convert_to_confidence(report)
-    for report in get_analysis_report_jsons_exist()
+    {
+        rule_path: result
+        for rule_path, result in load_analysis_result(sha256)
+    }
+    for sha256 in tqdm(sha256_list_exist, desc=f"Loading analysis results", delay=1)
 )
 
 import polars as pl
@@ -156,12 +165,12 @@ from itertools import islice
 counter = 0
 write_list = []
 for sha256, confidence_content, output_file in zip(sha256_list_exist, get_confidence_contents(), get_confidence_files(), strict=True):
-    if output_file.exists():
-        counter += 1
-        if counter > 480:
-            break
-        write_list.append((sha256, output_file))
-        continue
+    # if output_file.exists():
+    #     counter += 1
+    #     if counter > 480:
+    #         break
+    #     write_list.append((sha256, output_file))
+    #     continue
     
     # 將 rule_confidences_mapping 轉換為 DataFrame 並轉置
     confidence_table = polars.DataFrame(confidence_content)
@@ -177,9 +186,18 @@ for sha256, confidence_content, output_file in zip(sha256_list_exist, get_confid
         "column_0": "confidence"
     })
     
-    rule_index_table = pl.read_csv("data/rule_top_1000_index.csv", has_header=True)
+    rule_index_table = pl.read_csv(PATH_TO_RULE_LIST, has_header=True, columns=["rule"])\
+        .with_columns(
+            pl.col("rule").map_elements(lambda r: str(Path(PATH_TO_RULE_FOLDER) / r),return_dtype=str)\
+        .alias("rule_path"))\
+        .unique("rule_path",keep="first").with_row_index().select(["index","rule_path"])
     combined = rule_index_table.join(confidence_table, on="rule_path", how="left")
+    
+    print(f"Null count: {combined["confidence"].null_count()}")
+
     combined = combined.with_columns(pl.col("confidence").fill_null(0.0))
+
+
     combined = combined.with_columns(pl.col("confidence").map_elements(lambda x: stage_weight_mapping.get(x, 0.0), return_dtype=float).alias("weight"))
     combined = combined.with_columns(pl.col("index").alias("rule_id"))
     combined = combined.rename({
@@ -231,7 +249,14 @@ model = ScoringModel(NUM_OF_RULES)
 model
 
 # %%
+# Load Model From File
+import torch
+model.load_state_dict(torch.load("model_logs/model_20250402_122037_99", weights_only=True))
+model.eval()
+
+# %%
 # Sample Dataset
+import functools
 import torch
 class ApkDataset(torch.utils.data.Dataset):
     def __init__(self, num_of_rule, sha256_list, confidences = PATH_TO_CONFIDENCES):
@@ -258,6 +283,7 @@ class ApkDataset(torch.utils.data.Dataset):
             for apk_info in self.apk_info
         ]
 
+    @functools.cache
     def __getitem__(self, index) -> torch.Tensor:
         selected_file = self.confidence_files[index]
         confidence_table = polars.read_csv(selected_file, has_header=True, columns=["index", "confidence"])
@@ -277,9 +303,12 @@ class ApkDataset(torch.utils.data.Dataset):
 dataset = ApkDataset(NUM_OF_RULES, sha256_list=sha256_list_exist)
 
 from tqdm import tqdm
-[n for n in tqdm(dataset)]
+[n for n in tqdm(dataset, desc="Load Dataset")]
 
 [Path("data/confidences")/f"{sha256}.apk" for sha256 in sha256_list]
+
+# %%
+[n for n in tqdm(dataset, desc="Checking Dataset")]
 
 # %%
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True)
@@ -412,7 +441,7 @@ optimized_rule_score.write_csv("optimized_rule_score.csv", include_header=True)
 
 # %%
 # Optimizer
-optimizer = torch.optim.SGD(model.parameters(), lr=1, momentum=0.1)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.5, momentum=0.1)
 
 # my_lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=10, gamma=0.05)
 
