@@ -19,7 +19,7 @@ def init_worker(apk_path):
     global quark
     from quark.core.quark import Quark  # 確保在每個 worker 裡都可以 import
 
-    mem_bytes = 20 * 1024 * 1024 * 1024
+    mem_bytes = 10 * 1024 * 1024 * 1024
     resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
 
     quark = Quark(apk_path)
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     for apk_name in tqdm(apk_names, desc="APKs"):
         try:
             print(f"\n[+] Processing {apk_name}...")
-            main(apk_name, max_workers=5, skip_unfinished=False)
+            main(apk_name, max_workers=2, skip_unfinished=False)
         except KeyboardInterrupt as e:
             break
         except BaseException as e:

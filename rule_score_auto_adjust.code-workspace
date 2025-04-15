@@ -4,13 +4,14 @@
 			"path": "."
 		},
 		{
+			"path": "../quark-engine"
+		},
+		{
 			"path": "../generate_rules"
+		},
+		{
+			"path": "../data"
 		}
 	],
-	"settings": {},
-	"extensions": {
-		"recommendations": [
-			"ms-python.python"
-		]
-	}
+	"settings": {}
 }

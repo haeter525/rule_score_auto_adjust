@@ -5,16 +5,15 @@ from typing import Callable, Generator
 import os
 from tqdm.auto import tqdm
 import dotenv
+
+from data_preprocess import rule
 dotenv.load_dotenv()
 
 PATH_TO_DATASET = [
     "data/dataset/benignAPKs_top_0.4_vt_scan_date_415d3ec3d4e0bf95e16d93649eab516b430abf4953d28617046cc998e391a6da.csv",
     "data/dataset/maliciousAPKs_top_0.4_vt_scan_date_83d140381a28bc311b0423852b44efe3b6b859a8b6be7c6dac21fa9f0a833141.csv"
 ]
-# PATH_TO_RULES = "data/rule_top_1000"
-PATH_TO_REPORTS = "data/reports"
 PATH_TO_RULE_LIST = "/mnt/storage/data/rule_list/selected_rules_result_on_benign.csv"
-PATH_TO_RULE_FOLDER = "/mnt/storage/data/generated_rules"
 PATH_TO_CONFIDENCES = "/mnt/storage/data/dataset/20250409/confidences"
 NUM_OF_RULES = int(input("Num of rule?"))
 # print(f"Load rules from {PATH_TO_RULES}")
@@ -127,12 +126,12 @@ if len(read_json_error) != 0:
             print(f"Delete {p}")
             p.unlink()
 # %%
-from common import load_analysis_result
+from data_preprocess import analysis_result
 
 get_confidence_contents = lambda: (
     {
         rule_path: result
-        for rule_path, result in load_analysis_result(sha256)
+        for rule_path, result in analysis_result.load(sha256)
     }
     for sha256 in tqdm(sha256_list_exist, desc=f"Loading analysis results", delay=1)
 )
@@ -165,12 +164,12 @@ from itertools import islice
 counter = 0
 write_list = []
 for sha256, confidence_content, output_file in zip(sha256_list_exist, get_confidence_contents(), get_confidence_files(), strict=True):
-    # if output_file.exists():
-    #     counter += 1
-    #     if counter > 480:
-    #         break
-    #     write_list.append((sha256, output_file))
-    #     continue
+    if output_file.exists():
+        counter += 1
+        if counter > 480:
+            break
+        write_list.append((sha256, output_file))
+        continue
     
     # 將 rule_confidences_mapping 轉換為 DataFrame 並轉置
     confidence_table = polars.DataFrame(confidence_content)
@@ -188,12 +187,16 @@ for sha256, confidence_content, output_file in zip(sha256_list_exist, get_confid
     
     rule_index_table = pl.read_csv(PATH_TO_RULE_LIST, has_header=True, columns=["rule"])\
         .with_columns(
-            pl.col("rule").map_elements(lambda r: str(Path(PATH_TO_RULE_FOLDER) / r),return_dtype=str)\
+            pl.col("rule").map_elements(lambda r: str(rule.get(r)),return_dtype=str)\
         .alias("rule_path"))\
         .unique("rule_path",keep="first").with_row_index().select(["index","rule_path"])
     combined = rule_index_table.join(confidence_table, on="rule_path", how="left")
     
+    null_count = combined["confidence"].null_count()
     print(f"Null count: {combined["confidence"].null_count()}")
+    if null_count > 15:
+        print(f"Skip {sha256}")
+        continue
 
     combined = combined.with_columns(pl.col("confidence").fill_null(0.0))
 
@@ -211,11 +214,14 @@ for sha256, confidence_content, output_file in zip(sha256_list_exist, get_confid
     counter += 1
     write_list.append((sha256, output_file))
     if counter > 480:
+        print(f"{counter=} over 480, break.")
         break
 
 print("Down")
 
 sha256_list_exist = [sha256 for sha256, _ in write_list]
+
+# 要注意取出來的 APK 分析結果，其值為 null 的數量
 
 # %%
 # Build Model
@@ -242,17 +248,19 @@ class ScoringModel(torch.nn.Module):
         self.pos_rule_scores = torch.nn.Softplus()
 
     def forward(self, confidence):
-        return torch.matmul(confidence, self.pos_rule_scores(self.raw_rule_scores))
-    torch.nn.Linear
+        score = torch.matmul(confidence, self.pos_rule_scores(self.raw_rule_scores))
+        total_score = torch.sum(self.pos_rule_scores(self.raw_rule_scores))
+        normalized_score = score / total_score
+        return normalized_score
 
 model = ScoringModel(NUM_OF_RULES)
 model
 
 # %%
 # Load Model From File
-import torch
-model.load_state_dict(torch.load("model_logs/model_20250402_122037_99", weights_only=True))
-model.eval()
+# import torch
+# model.load_state_dict(torch.load("model_logs/model_20250411_073231_97", weights_only=True))
+# model.eval()
 
 # %%
 # Sample Dataset
@@ -293,7 +301,7 @@ class ApkDataset(torch.utils.data.Dataset):
             assert not (confidence_table.filter(pl.col("index").eq(i))).is_empty(), f"{selected_file} Missing index:{i}"
 
         assert confidence.shape[1] == self.num_of_rule, f"{selected_file=}, {confidence.shape=}, {self.num_of_rule=}"
-        expected_score = self.num_of_rule * self.apk_info[index]['is_malicious']
+        expected_score = self.apk_info[index]['is_malicious']
         return confidence, torch.tensor(expected_score, dtype=torch.float32)
     
     def __len__(self) -> int:
@@ -303,12 +311,10 @@ class ApkDataset(torch.utils.data.Dataset):
 dataset = ApkDataset(NUM_OF_RULES, sha256_list=sha256_list_exist)
 
 from tqdm import tqdm
-[n for n in tqdm(dataset, desc="Load Dataset")]
+[n for n in tqdm(dataset, desc="Checking Dataset")]
 
 [Path("data/confidences")/f"{sha256}.apk" for sha256 in sha256_list]
 
-# %%
-[n for n in tqdm(dataset, desc="Checking Dataset")]
 
 # %%
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True)
@@ -326,16 +332,13 @@ y_exp = torch.tensor([0.0, 50.0, 105.5, 160.0, 0.0])
 loss_value = loss_fn(y_pred, y_exp)
 
 print("Loss:", loss_value.item())  # 應該在 0 和 211 附近 loss 較小，在 105.5 附近 loss 較大
-# %%
-# Optimizer
-optimizer = torch.optim.SGD(model.parameters(), lr=5, momentum=0.1)
 
 # my_lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=10, gamma=0.05)
 
 # %%
 # Train
 
-def train_one_epoch(epoch_index, tb_writer):
+def train_one_epoch(epoch_index, tb_writer, optimizer):
     running_loss = 0.
     last_loss = 0.
 
@@ -351,6 +354,8 @@ def train_one_epoch(epoch_index, tb_writer):
 
         # Make predictions for this batch
         outputs = model(inputs)
+
+
 
         # Compute the loss and its gradients
         loss = loss_fn(outputs, labels)
@@ -375,419 +380,108 @@ def train_one_epoch(epoch_index, tb_writer):
 # Initializing in a separate cell so we can easily add more epochs to the same run
 from torch.utils.tensorboard.writer import SummaryWriter
 from datetime import datetime
-timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-writer = SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
-epoch_number = 0
 
-EPOCHS = 100
+def load_model_from_path(model_path, model):
+    model.load_state_dict(torch.load(model_path, weights_only=True))
 
-best_vloss = 1_000_000.
+def run_epochs(learning_rate, epochs = 100):
+    # Optimizer
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.1)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    writer = SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
+    epoch_number = 0
 
-from tqdm import tqdm
-for epoch in tqdm(list(range(EPOCHS))):
-    print('EPOCH {}:'.format(epoch_number + 1))
-    print(f"learning rate: {optimizer.param_groups[0]['lr']}")
+    EPOCHS = epochs
 
-    # Make sure gradient tracking is on, and do a pass over the data
-    model.train(True)
-    avg_loss = train_one_epoch(epoch_number, writer)
+    best_vloss = 1_000_000.
 
+    from tqdm import tqdm
+    for epoch in tqdm(list(range(EPOCHS))):
+        print('EPOCH {}:'.format(epoch_number + 1))
+        print(f"learning rate: {optimizer.param_groups[0]['lr']}")
 
-    running_vloss = 0.0
-    # Set the model to evaluation mode, disabling dropout and using population
-    # statistics for batch normalization.
-    model.eval()
+        # Make sure gradient tracking is on, and do a pass over the data
+        model.train(True)
+        avg_loss = train_one_epoch(epoch_number, writer, optimizer)
 
-    # Disable gradient computation and reduce memory consumption.
-    with torch.no_grad():
-        for i, vdata in enumerate(dataloader):
-            vinputs, vlabels = vdata
-            voutputs = model(vinputs)
-            vloss = loss_fn(voutputs, vlabels)
 
-            running_vloss += vloss
+        running_vloss = 0.0
+        # Set the model to evaluation mode, disabling dropout and using population
+        # statistics for batch normalization.
+        model.eval()
 
-    avg_vloss = running_vloss / (i + 1)
-    print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
+        # Disable gradient computation and reduce memory consumption.
+        with torch.no_grad():
+            for i, vdata in enumerate(dataloader):
+                vinputs, vlabels = vdata
+                voutputs = model(vinputs)
+                vloss = loss_fn(voutputs, vlabels)
 
-    # Log the running loss averaged per batch
-    # for both training and validation
-    writer.add_scalars('Training vs. Validation Loss',
-                    { 'Training' : avg_loss, 'Validation' : avg_vloss },
-                    epoch_number + 1)
-    writer.flush()
+                running_vloss += vloss
 
-    
+        avg_vloss = running_vloss / (i + 1)
+        print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
 
-    # Track best performance, and save the model's state
-    if avg_vloss < best_vloss:
-        best_vloss = avg_vloss
-        model_path = 'model_logs/model_{}_{}'.format(timestamp, epoch_number)
-        torch.save(model.state_dict(), model_path)
+        # Log the running loss averaged per batch
+        # for both training and validation
+        writer.add_scalars('Training vs. Validation Loss',
+                        { 'Training' : avg_loss, 'Validation' : avg_vloss },
+                        epoch_number + 1)
+        writer.flush()
 
-    epoch_number += 1
-# %%
-
-tensor = model.pos_rule_scores(model.raw_rule_scores).transpose(-2,1)[0]
-import polars as pl
-
-# 將 tensor 轉換為 numpy array
-numpy_array = tensor.detach().numpy()
-
-# 創建 DataFrame
-optimized_rule_score = pl.DataFrame(numpy_array.round(2)).rename({"column_0":"rule_score"})
-optimized_rule_score.write_csv("optimized_rule_score.csv", include_header=True)
-
-
-# %%
-# Optimizer
-optimizer = torch.optim.SGD(model.parameters(), lr=0.5, momentum=0.1)
-
-# my_lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=10, gamma=0.05)
-
-# %%
-# Train
-
-def train_one_epoch(epoch_index, tb_writer):
-    running_loss = 0.
-    last_loss = 0.
-
-    # Here, we use enumerate(training_loader) instead of
-    # iter(training_loader) so that we can track the batch
-    # index and do some intra-epoch reporting
-    for i, data in enumerate(dataloader):
-        # Every data instance is an input + label pair
-        inputs, labels = data
-
-        # Zero your gradients for every batch!
-        optimizer.zero_grad()
-
-        # Make predictions for this batch
-        outputs = model(inputs)
-
-        # Compute the loss and its gradients
-        loss = loss_fn(outputs, labels)
-        loss.backward()
-
-        # Adjust learning weights
-        optimizer.step()
-        # my_lr_scheduler.step()
-
-        # Gather data and report
-        running_loss += loss.item()
-        if i % 1000 == 999:
-            last_loss = running_loss / 1000 # loss per batch
-            print('  batch {} loss: {}'.format(i + 1, last_loss))
-            tb_x = epoch_index * len(dataloader) + i + 1
-            tb_writer.add_scalar('Loss/train', last_loss, tb_x)
-            running_loss = 0.
-
-    return last_loss
-
-# %%
-# Initializing in a separate cell so we can easily add more epochs to the same run
-from torch.utils.tensorboard.writer import SummaryWriter
-from datetime import datetime
-timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-writer = SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
-epoch_number = 0
-
-
-
-best_vloss = 1_000_000.
-
-from tqdm import tqdm
-for epoch in tqdm(list(range(EPOCHS))):
-    print('EPOCH {}:'.format(epoch_number + 1))
-    print(f"learning rate: {optimizer.param_groups[0]['lr']}")
-
-    # Make sure gradient tracking is on, and do a pass over the data
-    model.train(True)
-    avg_loss = train_one_epoch(epoch_number, writer)
-
-
-    running_vloss = 0.0
-    # Set the model to evaluation mode, disabling dropout and using population
-    # statistics for batch normalization.
-    model.eval()
-
-    # Disable gradient computation and reduce memory consumption.
-    with torch.no_grad():
-        for i, vdata in enumerate(dataloader):
-            vinputs, vlabels = vdata
-            voutputs = model(vinputs)
-            vloss = loss_fn(voutputs, vlabels)
-
-            running_vloss += vloss
-
-    avg_vloss = running_vloss / (i + 1)
-    print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
-
-    # Log the running loss averaged per batch
-    # for both training and validation
-    writer.add_scalars('Training vs. Validation Loss',
-                    { 'Training' : avg_loss, 'Validation' : avg_vloss },
-                    epoch_number + 1)
-    writer.flush()
-
-    
-
-    # Track best performance, and save the model's state
-    if avg_vloss < best_vloss:
-        best_vloss = avg_vloss
-        model_path = 'model_logs/model_{}_{}'.format(timestamp, epoch_number)
-        torch.save(model.state_dict(), model_path)
-
-    epoch_number += 1
-# %%
-
-tensor = model.pos_rule_scores(model.raw_rule_scores).transpose(-2,1)[0]
-import polars as pl
-
-# 將 tensor 轉換為 numpy array
-numpy_array = tensor.detach().numpy()
-
-# 創建 DataFrame
-optimized_rule_score = pl.DataFrame(numpy_array.round(2)).rename({"column_0":"rule_score"})
-optimized_rule_score.write_csv("optimized_rule_score.csv", include_header=True)
-
-
-# %%
-# Optimizer
-optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.1)
-
-# my_lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=10, gamma=0.05)
-
-# %%
-# Train
-
-def train_one_epoch(epoch_index, tb_writer):
-    running_loss = 0.
-    last_loss = 0.
-
-    # Here, we use enumerate(training_loader) instead of
-    # iter(training_loader) so that we can track the batch
-    # index and do some intra-epoch reporting
-    for i, data in enumerate(dataloader):
-        # Every data instance is an input + label pair
-        inputs, labels = data
-
-        # Zero your gradients for every batch!
-        optimizer.zero_grad()
-
-        # Make predictions for this batch
-        outputs = model(inputs)
-
-        # Compute the loss and its gradients
-        loss = loss_fn(outputs, labels)
-        loss.backward()
-
-        # Adjust learning weights
-        optimizer.step()
-        # my_lr_scheduler.step()
-
-        # Gather data and report
-        running_loss += loss.item()
-        if i % 1000 == 999:
-            last_loss = running_loss / 1000 # loss per batch
-            print('  batch {} loss: {}'.format(i + 1, last_loss))
-            tb_x = epoch_index * len(dataloader) + i + 1
-            tb_writer.add_scalar('Loss/train', last_loss, tb_x)
-            running_loss = 0.
-
-    return last_loss
-
-# %%
-# Initializing in a separate cell so we can easily add more epochs to the same run
-from torch.utils.tensorboard.writer import SummaryWriter
-from datetime import datetime
-timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-writer = SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
-epoch_number = 0
-
-
-best_vloss = 1_000_000.
-
-from tqdm import tqdm
-for epoch in tqdm(list(range(EPOCHS))):
-    print('EPOCH {}:'.format(epoch_number + 1))
-    print(f"learning rate: {optimizer.param_groups[0]['lr']}")
-
-    # Make sure gradient tracking is on, and do a pass over the data
-    model.train(True)
-    avg_loss = train_one_epoch(epoch_number, writer)
-
-
-    running_vloss = 0.0
-    # Set the model to evaluation mode, disabling dropout and using population
-    # statistics for batch normalization.
-    model.eval()
-
-    # Disable gradient computation and reduce memory consumption.
-    with torch.no_grad():
-        for i, vdata in enumerate(dataloader):
-            vinputs, vlabels = vdata
-            voutputs = model(vinputs)
-            vloss = loss_fn(voutputs, vlabels)
-
-            running_vloss += vloss
-
-    avg_vloss = running_vloss / (i + 1)
-    print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
-
-    # Log the running loss averaged per batch
-    # for both training and validation
-    writer.add_scalars('Training vs. Validation Loss',
-                    { 'Training' : avg_loss, 'Validation' : avg_vloss },
-                    epoch_number + 1)
-    writer.flush()
-
-    
-
-    # Track best performance, and save the model's state
-    if avg_vloss < best_vloss:
-        best_vloss = avg_vloss
-        model_path = 'model_logs/model_{}_{}'.format(timestamp, epoch_number)
-        torch.save(model.state_dict(), model_path)
-
-    epoch_number += 1
-# %%
-
-tensor = model.pos_rule_scores(model.raw_rule_scores).transpose(-2,1)[0]
-import polars as pl
-
-# 將 tensor 轉換為 numpy array
-numpy_array = tensor.detach().numpy()
-
-# 創建 DataFrame
-optimized_rule_score = pl.DataFrame(numpy_array.round(2)).rename({"column_0":"rule_score"})
-optimized_rule_score.write_csv("optimized_rule_score.csv", include_header=True)
-# %%
-# Optimizer
-optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.1)
-
-# my_lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=10, gamma=0.05)
-
-# %%
-# Train
-
-def train_one_epoch(epoch_index, tb_writer):
-    running_loss = 0.
-    last_loss = 0.
-
-    # Here, we use enumerate(training_loader) instead of
-    # iter(training_loader) so that we can track the batch
-    # index and do some intra-epoch reporting
-    for i, data in enumerate(dataloader):
-        # Every data instance is an input + label pair
-        inputs, labels = data
-
-        # Zero your gradients for every batch!
-        optimizer.zero_grad()
-
-        # Make predictions for this batch
-        outputs = model(inputs)
-
-        # Compute the loss and its gradients
-        loss = loss_fn(outputs, labels)
-        loss.backward()
-
-        # Adjust learning weights
-        optimizer.step()
-        # my_lr_scheduler.step()
-
-        # Gather data and report
-        running_loss += loss.item()
-        if i % 1000 == 999:
-            last_loss = running_loss / 1000 # loss per batch
-            print('  batch {} loss: {}'.format(i + 1, last_loss))
-            tb_x = epoch_index * len(dataloader) + i + 1
-            tb_writer.add_scalar('Loss/train', last_loss, tb_x)
-            running_loss = 0.
-
-    return last_loss
-
-# %%
-# Initializing in a separate cell so we can easily add more epochs to the same run
-from torch.utils.tensorboard.writer import SummaryWriter
-from datetime import datetime
-timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-writer = SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
-epoch_number = 0
-
-best_vloss = 1_000_000.
-
-from tqdm import tqdm
-for epoch in tqdm(list(range(EPOCHS))):
-    print('EPOCH {}:'.format(epoch_number + 1))
-    print(f"learning rate: {optimizer.param_groups[0]['lr']}")
-
-    # Make sure gradient tracking is on, and do a pass over the data
-    model.train(True)
-    avg_loss = train_one_epoch(epoch_number, writer)
-
-
-    running_vloss = 0.0
-    # Set the model to evaluation mode, disabling dropout and using population
-    # statistics for batch normalization.
-    model.eval()
-
-    # Disable gradient computation and reduce memory consumption.
-    with torch.no_grad():
-        for i, vdata in enumerate(dataloader):
-            vinputs, vlabels = vdata
-            voutputs = model(vinputs)
-            vloss = loss_fn(voutputs, vlabels)
-
-            running_vloss += vloss
-
-    avg_vloss = running_vloss / (i + 1)
-    print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
-
-    # Log the running loss averaged per batch
-    # for both training and validation
-    writer.add_scalars('Training vs. Validation Loss',
-                    { 'Training' : avg_loss, 'Validation' : avg_vloss },
-                    epoch_number + 1)
-    writer.flush()
-
-    
-
-    # Track best performance, and save the model's state
-    if avg_vloss < best_vloss:
-        best_vloss = avg_vloss
-        model_path = 'model_logs/model_{}_{}'.format(timestamp, epoch_number)
-        torch.save(model.state_dict(), model_path)
-
-    epoch_number += 1
-# %%
-
-tensor = model.pos_rule_scores(model.raw_rule_scores).transpose(-2,1)[0]
-import polars as pl
-
-# 將 tensor 轉換為 numpy array
-numpy_array = tensor.detach().numpy()
-
-# 創建 DataFrame
-optimized_rule_score = pl.DataFrame(numpy_array.round(2)).rename({"column_0":"rule_score"})
-optimized_rule_score.write_csv("optimized_rule_score.csv", include_header=True)
-
-# %%
-from tqdm import tqdm
-
-with torch.no_grad():
-    counter = 0
-    hit = 0
-    for i, vdata in tqdm(enumerate(dataloader)):
-        vinputs, vlabels = vdata
-        voutputs = 1 if model(vinputs) > 0.5 else 0
         
-        if voutputs == vlabels:
-            hit += 1
 
-        counter += 1
+        # Track best performance, and save the model's state
+        if avg_vloss < best_vloss:
+            best_vloss = avg_vloss
+            model_path = 'model_logs/model_{}_{}'.format(timestamp, epoch_number)
+            torch.save(model.state_dict(), model_path)
 
-accuracy = hit / counter
+        epoch_number += 1
+        
+    tensor = model.pos_rule_scores(model.raw_rule_scores).transpose(-2,1)[0]
+    import polars as pl
+
+    # 將 tensor 轉換為 numpy array
+    numpy_array = tensor.detach().numpy()
+
+    # 創建 DataFrame
+    optimized_rule_score = pl.DataFrame(numpy_array.round(2)).rename({"column_0":"rule_score"})
+    optimized_rule_score.write_csv("optimized_rule_score.csv", include_header=True)
+
+    return model_path
+
+# %%
+lrs = [5, 5, 1, 1, 1, 0.5]
+# lrs = [1]
+for lr in lrs:
+    best_model_param_path = run_epochs(lr)
+    load_model_from_path(best_model_param_path, model)
+
+print("Down")
+
+# %%
+from tqdm import tqdm
+from sklearn.metrics import accuracy_score
+
+def model_inference(model, x):
+    with torch.no_grad():
+        return model(x).item()
+
+x_input, y_truth = [],[]
+for x, y in dataloader:
+    x_input.append(x)
+    y_truth.append(y)
+
+y_pred_row = [
+    model_inference(model, x) for x in x_input
+]
+
+y_pred = [
+    1 if y_row > 0.5 else 0 for y_row in y_pred_row
+]
+
+accuracy = accuracy_score(y_truth, y_pred)
 print(f"{accuracy=}")
 
 # %%
