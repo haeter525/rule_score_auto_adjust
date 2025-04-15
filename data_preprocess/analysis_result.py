@@ -50,6 +50,11 @@ def load(sha256:str) -> list[str,int]:
     combined = [tuple(item) for item in load_old(sha256=sha256) + load_new(sha256=sha256)]
     return list(set(combined))
 
+def load_as_dataframe(sha256:str) -> pl.DataFrame:
+    content = load_new(sha256=sha256)
+    dataframe = pl.DataFrame(content, schema=SCHEMA, orient="row")
+    return dataframe
+
 def save(sha256:str, analysis_result: list[str, int]) -> Path:
     file = get_file_new(sha256=sha256)
     pl.DataFrame(analysis_result, schema=SCHEMA).write_csv(file, include_header=True)

@@ -7,7 +7,7 @@ def get_folder() -> Path:
     return Path(os.getenv("GENERATED_RULE_FOLDER"))
 
 def get(rule_name: str) -> Path:
-    rule_path = get_folder() / f"{rule_name}.json"
+    rule_path = get_folder() / f"{rule_name}"
     return rule_path.resolve()
 
 def build_rule_folder(rule_names: list[str], folder: Path) -> Path:
