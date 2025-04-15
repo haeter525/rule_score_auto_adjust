@@ -1,13 +1,10 @@
 # %%
 import datetime
 from pathlib import Path
-from typing import Callable, Generator
 import os
 from tqdm.auto import tqdm
 import dotenv
 import polars
-
-from data_preprocess import rule
 
 dotenv.load_dotenv()
 
@@ -164,41 +161,30 @@ class ApkDataset(torch.utils.data.Dataset):
             )
         )
 
-        # self.apk_info = sha256_table.join(
-        #     combined, on="sha256", how="left"
-        # ).to_dicts()
-
         # Index Rules
         self.rules = pl.DataFrame(
             rules, schema={"rule": pl.String}
         ).unique(["rule"]).with_row_index()
-
-        # self.confidences_folder = confidences
-        # # 取得所有 csv 檔案路徑
-        # self.confidence_files = [
-        #     os.path.join(self.confidences_folder, f"{apk_info['sha256']}.csv")
-        #     for apk_info in self.apk_info
-        # ]
-
-    def save_cache(self, sha256: str, indexed_result: pl.DataFrame) -> None:
-        cache_file = Path(os.getenv("DATASET_FOLDER")) / f"{sha256}.csv"
-        indexed_result.write_csv(cache_file, include_header=True)
-
-    def load_cache(self, sha256: str) -> pl.DataFrame | None:
-        cache_file = Path(os.getenv("DATASET_FOLDER")) / f"{sha256}.csv"
-        if not cache_file.exists():
-            return None
-        return polars.read_csv(cache_file, has_header=True)
-
-    @functools.cache
-    def __getitem__(self, index) -> torch.Tensor:
-        sha256 = self.apk_info.item(row=index, column="sha256")
-
-        # cache = self.load_cache(sha256)
-
-        # if cache is not None:
-        #     indexed_result = cache
-        # else:
+        
+        # Prepare data
+        sha256_to_filter_out = []
+        
+        for sha256 in tqdm(self.apk_info["sha256"], desc="Preparing Dataset"):
+            indexed_result = self.__prepare_data(sha256)
+            
+            if indexed_result["passing_stage"].null_count() != 0:
+                print(f"Null values in {sha256} indexed result.")
+                sha256_to_filter_out.append(sha256)
+            
+            self.save_cache(sha256, indexed_result)
+            
+        self.apk_info = self.apk_info.filter(
+            ~pl.col("sha256").is_in(sha256_to_filter_out)
+        )
+        
+        
+        
+    def __prepare_data(self, sha256: str) -> polars.DataFrame:
         result = (
             analysis_result.load_as_dataframe(sha256)
             .rename(
@@ -244,11 +230,35 @@ class ApkDataset(torch.utils.data.Dataset):
         assert indexed_result_torch.shape[1] == len(
             self.rules
         ), f"{sha256=}, {indexed_result_torch.shape=}, {len(self.rules)=}"
+        
+        return indexed_result
+        
+    def save_cache(self, sha256: str, indexed_result: pl.DataFrame) -> None:
+        cache_file = Path(os.getenv("DATASET_FOLDER")) / f"{sha256}.csv"
+        indexed_result.write_csv(cache_file, include_header=True)
+
+    def load_cache(self, sha256: str) -> pl.DataFrame | None:
+        cache_file = Path(os.getenv("DATASET_FOLDER")) / f"{sha256}.csv"
+        if not cache_file.exists():
+            return None
+        return polars.read_csv(cache_file, has_header=True)
+
+    @functools.cache
+    def __getitem__(self, index) -> torch.Tensor:
+        sha256 = self.apk_info.item(row=index, column="sha256")
+
+        indexed_result = self.load_cache(sha256)
+
+        indexed_result_torch = (
+            indexed_result.select("passing_stage")
+            .transpose()
+            .to_torch(dtype=polars.Float32)
+        )
 
         expected_score = torch.tensor(
             self.apk_info[index]["is_malicious"], dtype=torch.float32
         )
-
+        
         return indexed_result_torch, expected_score
 
     def __len__(self) -> int:
@@ -275,20 +285,15 @@ import torch
 loss_fn = torch.nn.HuberLoss()
 
 # 測試數據
-y_pred = torch.tensor([0.0, 50.0, 105.5, 160.0, 211.0])  # 模擬不同的預測值
-y_exp = torch.tensor([0.0, 50.0, 105.5, 160.0, 0.0])
+y_pred = torch.tensor([0.0, 1.0, 1.5, 1.0, 0.0])  # 模擬不同的預測值
+y_exp = torch.tensor([0.0, 1.0, 1.0, 0.0, 0.0])
 loss_value = loss_fn(y_pred, y_exp)
 
 print(
     "Loss:", loss_value.item()
-)  # 應該在 0 和 211 附近 loss 較小，在 105.5 附近 loss 較大
-
-# my_lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=10, gamma=0.05)
-
+)  
 # %%
 # Train
-
-
 def train_one_epoch(epoch_index, tb_writer, optimizer):
     running_loss = 0.0
     last_loss = 0.0
@@ -414,7 +419,7 @@ def run_epochs(learning_rate, epochs=100):
 
 
 # %%
-lrs = [5, 5, 1, 1, 1, 0.5]
+lrs = [5, 5, 1, 1, 1, 0.5, 0.5, 0.1, 0.1, 0.01, 0.01]
 # lrs = [1]
 for lr in lrs:
     best_model_param_path = run_epochs(lr)
@@ -434,13 +439,13 @@ def model_inference(model, x):
 
 
 x_input, y_truth = [], []
-for x, y in dataloader:
+for x, y in dataset:
     x_input.append(x)
     y_truth.append(y)
 
 y_pred_row = [model_inference(model, x) for x in x_input]
 
-y_pred = [1 if y_row > 0.5 else 0 for y_row in y_pred_row]
+y_pred = [1 if y_row > 0 else 0 for y_row in y_pred_row]
 
 accuracy = accuracy_score(y_truth, y_pred)
 print(f"{accuracy=}")
