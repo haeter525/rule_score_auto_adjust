@@ -96,16 +96,6 @@ from data_preprocess import analysis_result
 import polars as pl
 import json
 
-
-stage_weight_mapping = {
-    0.0: 0.0,
-    1.0: 0.0625,
-    2.0: 0.125,
-    3.0: 0.25,
-    4.0: 0.5,
-    5.0: 1.0,
-}
-
 # %%
 # Build Model
 from model import ScoringModel
@@ -123,156 +113,17 @@ model
 # Sample Dataset
 import functools
 import torch
-from data_preprocess import apk
+from data_preprocess import apk, dataset
 from tqdm import tqdm
-
-class ApkDataset(torch.utils.data.Dataset):
-    def __init__(self, datasets: list[Path], rules: set[str]):
-
-        # sha256, is_malicious, rule1, rule2, ...
-        schema = {
-            "sha256": polars.String,
-            "apk_path": polars.String,
-            "is_malicious": polars.Int32,
-        }
-        __dataset_df = [
-            polars.read_csv(
-                dataset_path,
-                has_header=True,
-                columns=["sha256", "apk_path", "is_malicious"],
-                schema_overrides=schema,
-            )
-            for dataset_path in datasets
-        ]
-        self.apk_info = polars.concat(__dataset_df)
-
-        # Filter out apk not exits
-        self.apk_info = combined.filter(
-            pl.col("sha256").map_elements(
-                lambda x: apk.get(x).exists(), return_dtype=pl.Boolean
-            )
-        )
-
-        # Filter out analysis result not exits
-        self.apk_info = combined.filter(
-            pl.col("sha256").map_elements(
-                lambda x: analysis_result.get_file(x).exists(),
-                return_dtype=pl.Boolean,
-            )
-        )
-
-        # Index Rules
-        self.rules = pl.DataFrame(
-            rules, schema={"rule": pl.String}
-        ).unique(["rule"]).with_row_index()
-        
-        # Prepare data
-        sha256_to_filter_out = []
-        
-        for sha256 in tqdm(self.apk_info["sha256"], desc="Preparing Dataset"):
-            indexed_result = self.__prepare_data(sha256)
-            
-            if indexed_result["passing_stage"].null_count() != 0:
-                print(f"Null values in {sha256} indexed result.")
-                sha256_to_filter_out.append(sha256)
-            
-            self.save_cache(sha256, indexed_result)
-            
-        self.apk_info = self.apk_info.filter(
-            ~pl.col("sha256").is_in(sha256_to_filter_out)
-        )
-        
-        
-        
-    def __prepare_data(self, sha256: str) -> polars.DataFrame:
-        result = (
-            analysis_result.load_as_dataframe(sha256)
-            .rename(
-                {
-                    "rule_name": "rule",
-                }
-            )
-            .with_columns(
-                pl.col("passing_stage").map_elements(
-                    lambda x: stage_weight_mapping.get(float(x), 0.0),
-                    return_dtype=pl.Float32,
-                ),
-                pl.col("rule").map_elements(
-                    lambda x: x.split("/")[-1],
-                    return_dtype=pl.String,
-                )
-            )
-        )
-        
-        # drop row if the column "rule" is duplicate
-        result = result.unique(subset=["rule"])
-        
-        indexed_result = self.rules.join(
-            result, on="rule", how="left", maintain_order="left"
-        )
-
-        self.save_cache(sha256, indexed_result)
-
-        indexed_result_torch = (
-            indexed_result.select("passing_stage")
-            .transpose()
-            .to_torch(dtype=polars.Float32)
-        )
-
-        assert (
-            indexed_result_torch.numel() != 0
-        ), f"Indexed result for {sha256} is empty. {analysis_result.get_file(sha256)}"
-        for i in range(indexed_result_torch.shape[1]):
-            assert not (
-                indexed_result.filter(pl.col("index").eq(i))
-            ).is_empty(), f"{sha256} Missing index:{i}"
-
-        assert indexed_result_torch.shape[1] == len(
-            self.rules
-        ), f"{sha256=}, {indexed_result_torch.shape=}, {len(self.rules)=}"
-        
-        return indexed_result
-        
-    def save_cache(self, sha256: str, indexed_result: pl.DataFrame) -> None:
-        cache_file = Path(os.getenv("DATASET_FOLDER")) / f"{sha256}.csv"
-        indexed_result.write_csv(cache_file, include_header=True)
-
-    def load_cache(self, sha256: str) -> pl.DataFrame | None:
-        cache_file = Path(os.getenv("DATASET_FOLDER")) / f"{sha256}.csv"
-        if not cache_file.exists():
-            return None
-        return polars.read_csv(cache_file, has_header=True)
-
-    @functools.cache
-    def __getitem__(self, index) -> torch.Tensor:
-        sha256 = self.apk_info.item(row=index, column="sha256")
-
-        indexed_result = self.load_cache(sha256)
-
-        indexed_result_torch = (
-            indexed_result.select("passing_stage")
-            .transpose()
-            .to_torch(dtype=polars.Float32)
-        )
-
-        expected_score = torch.tensor(
-            self.apk_info[index]["is_malicious"], dtype=torch.float32
-        )
-        
-        return indexed_result_torch, expected_score
-
-    def __len__(self) -> int:
-        return len(self.apk_info)
-
-    def verify(self) -> bool:
-        [n for n in tqdm(self, desc="Checking Dataset")]
 
 rules = pl.read_csv(PATH_TO_RULE_LIST, has_header=True, columns=["rule"])\
     .to_series().to_list()
 
-dataset = ApkDataset(PATH_TO_DATASET, rules)
+dataset = dataset.ApkDataset(PATH_TO_DATASET, rules)
 dataset.verify()
 
+print(f"APK distribution: {dataset.apk_info['is_malicious'].value_counts()}")
+print(f"Num of rules: {len(dataset.rules)}")
 
 # %%
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset), shuffle=True)
@@ -321,7 +172,7 @@ def train_one_epoch(epoch_index, tb_writer, optimizer):
 
         # Gather data and report
         running_loss += loss.item()
-        if i % 1000 == 999:
+        if i % 10000 == 999:
             last_loss = running_loss / 1000  # loss per batch
             print("  batch {} loss: {}".format(i + 1, last_loss))
             tb_x = epoch_index * len(dataloader) + i + 1
@@ -394,6 +245,8 @@ def run_epochs(learning_rate, epochs=100):
         # Track best performance, and save the model's state
         if avg_vloss < best_vloss:
             best_vloss = avg_vloss
+            model_folder = Path("model_logs")
+            model_folder.mkdir(parents=True, exist_ok=True)
             model_path = "model_logs/model_{}_{}".format(
                 timestamp, epoch_number
             )
@@ -419,10 +272,10 @@ def run_epochs(learning_rate, epochs=100):
 
 
 # %%
-lrs = [5, 5, 1, 1, 1, 0.5, 0.5, 0.1, 0.1, 0.01, 0.01]
+lrs = [5] * 2
 # lrs = [1]
 for lr in lrs:
-    best_model_param_path = run_epochs(lr)
+    best_model_param_path = run_epochs(lr, epochs=10000)
     if best_model_param_path is not None:
         load_model_from_path(best_model_param_path, model)
 
@@ -445,7 +298,7 @@ for x, y in dataset:
 
 y_pred_row = [model_inference(model, x) for x in x_input]
 
-y_pred = [1 if y_row > 0 else 0 for y_row in y_pred_row]
+y_pred = [1 if y_row > 0.5 else 0 for y_row in y_pred_row]
 
 accuracy = accuracy_score(y_truth, y_pred)
 print(f"{accuracy=}")
@@ -479,9 +332,4 @@ for row in combine.to_dicts():
 
     with open(rule_path, "w") as f:
         json.dump(rule_data, f, indent=4)
-# %%
-
-# remove 9328A73772559AE20165A0E48A484554F5746BD6505C65C6E7EAE02EAFDE76B7,/mnt/f2ce377e-d586-41c5-bdf7-fad4a20f5b98/generate_rules/data/apks/9328A73772559AE20165A0E48A484554F5746BD6505C65C6E7EAE02EAFDE76B7.apk,1
-# remove C687E2F0B4992BD368DF0C24B76943C99AC3EB9E4E8C13422EBF1A872A06070A,/mnt/f2ce377e-d586-41c5-bdf7-fad4a20f5b98/generate_rules/data/apks/C687E2F0B4992BD368DF0C24B76943C99AC3EB9E4E8C13422EBF1A872A06070A.apk,1
-# remove 77F7A39A5B5367A5CE12E6B35B999FF1571821FB563764E45615FEB4CEB86FC0,/mnt/f2ce377e-d586-41c5-bdf7-fad4a20f5b98/generate_rules/data/apks/77F7A39A5B5367A5CE12E6B35B999FF1571821FB563764E45615FEB4CEB86FC0.apk,1
-# remove 33C9604DB40D4453935A7076BA5018061BC906ACE486BC8C2D7197EC08EB8951,/mnt/f2ce377e-d586-41c5-bdf7-fad4a20f5b98/generate_rules/data/apks/33C9604DB40D4453935A7076BA5018061BC906ACE486BC8C2D7197EC08EB8951.apk,1
+        
