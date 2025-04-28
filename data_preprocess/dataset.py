@@ -18,7 +18,6 @@ STAGE_WEIGHT_MAPPING = {
 
 DATASET_SCHEMA = {
     "sha256": pl.String,
-    "apk_path": pl.String,
     "is_malicious": pl.Int32,
 }
 
@@ -28,7 +27,7 @@ CACHE_SCHEMA = {
     "weights": pl.Float32
 }
 
-def has_no_passing_stage_5_on_any_rule(
+def has_passing_stage_5_on_any_rule(
     dataset: "ApkDataset", sha256: str
 ) -> bool:
     indexed_result = dataset.load_cache(sha256)
@@ -39,16 +38,16 @@ def has_no_passing_stage_5_on_any_rule(
         pl.col("weights").eq(1)
     )
     return (
-        num_of_rules_passing_stage_5.is_empty()
-        or num_of_rules_passing_stage_5.item(0, "count") == 0
+        (not num_of_rules_passing_stage_5.is_empty())
+        and num_of_rules_passing_stage_5.item(0, "count") > 0
     )
 
 
-def with_missing_analysis_result(dataset: "ApkDataset", sha256: str) -> bool:
+def all_analysis_result_are_ready(dataset: "ApkDataset", sha256: str) -> bool:
     indexed_result = dataset.load_cache(sha256)
     if indexed_result is None:
         return True
-    return indexed_result["weights"].null_count() != 0
+    return indexed_result["weights"].null_count() == 0
 
 
 class ApkDataset(torch.utils.data.Dataset):
@@ -58,8 +57,8 @@ class ApkDataset(torch.utils.data.Dataset):
         data_index_files: list[Path],
         rules: set[str],
         apk_filter_funcs: Callable[["ApkDataset", str], bool] = [
-            has_no_passing_stage_5_on_any_rule,
-            with_missing_analysis_result,
+            has_passing_stage_5_on_any_rule,
+            all_analysis_result_are_ready,
         ],
     ):
 
@@ -80,7 +79,7 @@ class ApkDataset(torch.utils.data.Dataset):
 
         # Filter out apks based on filter_funcs
         for filter_func in tqdm(apk_filter_funcs, desc="Filtering Dataset"):
-            self.filter_out_apk(filter_func)
+            self.filter_apk(filter_func)
 
         assert not self.apk_info.is_empty(), "APK dataset is empty."
         assert not self.rules.is_empty(), "Rule dataset is empty."
@@ -136,7 +135,7 @@ class ApkDataset(torch.utils.data.Dataset):
         print(f"Num of rules: {len(self.rules)}")
         print(f"Num of apks: {len(self.apk_info)}")
 
-    def filter_out_apk(
+    def filter_apk(
         self, filter_func: Callable[["ApkDataset", str], bool]
     ) -> None:
         partial_filter_func = functools.partial(
@@ -145,7 +144,7 @@ class ApkDataset(torch.utils.data.Dataset):
         apk_to_drop = self.apk_info.filter(
             pl.col("sha256").map_elements(
                 partial_filter_func, return_dtype=pl.Boolean
-            )
+            ).not_()
         )
         print(
             f"Dropping APKs {filter_func.__name__}:",
@@ -162,7 +161,7 @@ class ApkDataset(torch.utils.data.Dataset):
             pl.read_csv(
                 dataset_path,
                 has_header=True,
-                columns=["sha256", "apk_path", "is_malicious"],
+                columns=["sha256", "is_malicious"],
                 schema_overrides=DATASET_SCHEMA,
             )
             for dataset_path in datasets
@@ -236,13 +235,19 @@ class ApkDataset(torch.utils.data.Dataset):
         return indexed_result
 
     @staticmethod
+    def cache_folder() -> Path:
+        folder = Path(os.getenv("DATASET_FOLDER")) / "cache"
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder
+
+    @staticmethod
     def save_cache(sha256: str, indexed_result: pl.DataFrame) -> None:
-        cache_file = Path(os.getenv("DATASET_FOLDER")) / f"{sha256}.csv"
+        cache_file = ApkDataset.cache_folder() / f"{sha256}.csv"
         indexed_result.select(CACHE_SCHEMA.keys()).write_csv(cache_file, include_header=True)
 
     @staticmethod
     def load_cache(sha256: str) -> pl.DataFrame | None:
-        cache_file = Path(os.getenv("DATASET_FOLDER")) / f"{sha256}.csv"
+        cache_file = ApkDataset.cache_folder() / f"{sha256}.csv"
         if not cache_file.exists():
             return None
         return pl.read_csv(cache_file, has_header=True, schema=CACHE_SCHEMA)

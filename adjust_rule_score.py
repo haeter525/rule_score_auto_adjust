@@ -9,17 +9,11 @@ import polars
 dotenv.load_dotenv()
 
 PATH_TO_DATASET = [
-    Path(
-        "data/dataset/benignAPKs_top_0.4_vt_scan_date_415d3ec3d4e0bf95e16d93649eab516b430abf4953d28617046cc998e391a6da.csv"
-    ),
-    Path(
-        "data/dataset/maliciousAPKs_top_0.4_vt_scan_date_83d140381a28bc311b0423852b44efe3b6b859a8b6be7c6dac21fa9f0a833141.csv"
-    ),
+    Path("/mnt/storage/rule_score_auto_adjust/data/dataset/dataset.csv"),
 ]
 PATH_TO_RULE_LIST = (
     "/mnt/storage/data/rule_list/selected_rules_result_on_benign.csv"
 )
-PATH_TO_CONFIDENCES = "/mnt/storage/data/dataset/20250409/confidences"
 NUM_OF_RULES = len(
     set(
         polars.read_csv(PATH_TO_RULE_LIST, has_header=True, columns=["rule"])
@@ -30,34 +24,17 @@ NUM_OF_RULES = len(
 
 
 # %%
-from deprecated import deprecated
-
-
-@deprecated(reason="Use apk.calculate_sha256 instead")
-def calculate_sha256(file_path: str) -> str:
-    """計算檔案的 SHA256 雜湊值"""
-    import hashlib
-
-    sha256_hash = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        # 每次讀取 4KB 以避免大檔案占用過多記憶體
-        for byte_block in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(byte_block)
-    return sha256_hash.hexdigest()
-
-
-# %%
 import polars
 
 __dataframes = [
     polars.read_csv(dataset_path, has_header=True).select(
-        ["sha256", "apk_path", "is_malicious"]
+        ["sha256", "is_malicious"]
     )
     for dataset_path in PATH_TO_DATASET
 ]
 combined = polars.concat(__dataframes)
 
-sha256_list, apkList, isMalware = combined
+sha256_list, isMalware = combined
 print(f"Load apk list from {PATH_TO_DATASET}")
 print(f"Num of apk: {len(sha256_list)}")
 
@@ -98,26 +75,39 @@ import json
 
 # %%
 # Build Model
-from model import ScoringModel
+from model import RuleAdjustmentModel_NoTotalScore, RuleAdjustmentModel
 
-model = ScoringModel(NUM_OF_RULES)
+model = RuleAdjustmentModel_NoTotalScore(NUM_OF_RULES)
 model
 
 # %%
 # Load Model From File
-# import torch
-# model.load_state_dict(torch.load("model_logs/model_20250411_073231_97", weights_only=True))
-# model.eval()
+import torch
+model.load_state_dict(
+    torch.load("model_logs/model_20250429_024124_992", weights_only=True)
+)
+model.eval()
+
+# %%
+# Move Model to GPU
+import torch
+
+assert torch.cuda.is_available()
+device = torch.device("cuda")
+model = model.to(device)
+
 
 # %%
 # Sample Dataset
-import functools
 import torch
 from data_preprocess import apk, dataset
 from tqdm import tqdm
 
-rules = pl.read_csv(PATH_TO_RULE_LIST, has_header=True, columns=["rule"])\
-    .to_series().to_list()
+rules = (
+    pl.read_csv(PATH_TO_RULE_LIST, has_header=True, columns=["rule"])
+    .to_series()
+    .to_list()
+)
 
 dataset = dataset.ApkDataset(PATH_TO_DATASET, rules)
 dataset.verify()
@@ -126,23 +116,25 @@ print(f"APK distribution: {dataset.apk_info['is_malicious'].value_counts()}")
 print(f"Num of rules: {len(dataset.rules)}")
 
 # %%
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset), shuffle=True)
+dataloader = torch.utils.data.DataLoader(
+    dataset, batch_size=len(dataset), shuffle=True
+)
 
 # %%
 # Loss Function
 import torch
 
 # 測試 Loss
-loss_fn = torch.nn.HuberLoss()
+loss_fn = torch.nn.BCELoss().to(device)
 
 # 測試數據
-y_pred = torch.tensor([0.0, 1.0, 1.5, 1.0, 0.0])  # 模擬不同的預測值
+y_pred = torch.tensor([0.0, 1.0, 1.0, 1.0, 0.0])  # 模擬不同的預測值
 y_exp = torch.tensor([0.0, 1.0, 1.0, 0.0, 0.0])
 loss_value = loss_fn(y_pred, y_exp)
 
-print(
-    "Loss:", loss_value.item()
-)  
+print("Loss:", loss_value.item())
+
+
 # %%
 # Train
 def train_one_epoch(epoch_index, tb_writer, optimizer):
@@ -155,6 +147,7 @@ def train_one_epoch(epoch_index, tb_writer, optimizer):
     for i, data in enumerate(dataloader):
         # Every data instance is an input + label pair
         inputs, labels = data
+        inputs, labels = inputs.to(device), labels.to(device)
 
         # Zero your gradients for every batch!
         optimizer.zero_grad()
@@ -209,8 +202,8 @@ def run_epochs(learning_rate, epochs=100):
     from tqdm import tqdm
 
     for epoch in tqdm(list(range(EPOCHS))):
-        print("EPOCH {}:".format(epoch_number + 1))
-        print(f"learning rate: {optimizer.param_groups[0]['lr']}")
+        # print("EPOCH {}:".format(epoch_number + 1))
+        # print(f"learning rate: {optimizer.param_groups[0]['lr']}")
 
         # Make sure gradient tracking is on, and do a pass over the data
         model.train(True)
@@ -225,13 +218,21 @@ def run_epochs(learning_rate, epochs=100):
         with torch.no_grad():
             for i, vdata in enumerate(dataloader):
                 vinputs, vlabels = vdata
+                vinputs, vlabels = vinputs.to(device), vlabels.to(device)
                 voutputs = model(vinputs)
                 vloss = loss_fn(voutputs, vlabels)
 
                 running_vloss += vloss
 
         avg_vloss = running_vloss / (i + 1)
-        print("LOSS train {} valid {}".format(avg_loss, avg_vloss))
+        print(
+            "EP {}, LR {}, LOSS train {} valid {}".format(
+                epoch_number + 1,
+                optimizer.param_groups[0]["lr"],
+                avg_loss,
+                avg_vloss,
+            )
+        )
 
         # Log the running loss averaged per batch
         # for both training and validation
@@ -254,28 +255,15 @@ def run_epochs(learning_rate, epochs=100):
 
         epoch_number += 1
 
-    tensor = model.pos_rule_scores(model.raw_rule_scores).transpose(-2, 1)[0]
-    import polars as pl
-
-    # 將 tensor 轉換為 numpy array
-    numpy_array = tensor.detach().numpy()
-
-    # 創建 DataFrame
-    optimized_rule_score = pl.DataFrame(numpy_array.round(2)).rename(
-        {"column_0": "rule_score"}
-    )
-    optimized_rule_score.write_csv(
-        "optimized_rule_score.csv", include_header=True
-    )
-
     return model_path
 
 
 # %%
-lrs = [5] * 2
+lrs = [25] * 10
+best_model_param_path = None
 # lrs = [1]
 for lr in lrs:
-    best_model_param_path = run_epochs(lr, epochs=10000)
+    best_model_param_path = run_epochs(lr, epochs=1000)
     if best_model_param_path is not None:
         load_model_from_path(best_model_param_path, model)
 
@@ -283,7 +271,15 @@ print("Down")
 
 # %%
 from tqdm import tqdm
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+)
+
+if best_model_param_path is not None:
+    load_model_from_path(best_model_param_path, model)
 
 
 def model_inference(model, x):
@@ -293,7 +289,7 @@ def model_inference(model, x):
 
 x_input, y_truth = [], []
 for x, y in dataset:
-    x_input.append(x)
+    x_input.append(x.to(device))
     y_truth.append(y)
 
 y_pred_row = [model_inference(model, x) for x in x_input]
@@ -301,8 +297,58 @@ y_pred_row = [model_inference(model, x) for x in x_input]
 y_pred = [1 if y_row > 0.5 else 0 for y_row in y_pred_row]
 
 accuracy = accuracy_score(y_truth, y_pred)
+precision = precision_score(y_truth, y_pred)
+recall = recall_score(y_truth, y_pred)
+f1 = f1_score(y_truth, y_pred)
 print(f"{accuracy=}")
+print(f"{precision=}")
+print(f"{recall=}")
+print(f"{f1=}")
 
+# %%
+
+apk_prediction = pl.DataFrame(
+    {
+        "sha256": dataset.apk_info["sha256"],
+        "y_truth": y_truth,
+        "y_pred_row": y_pred_row,
+        "y_pred": y_pred,
+    }
+)
+
+sha256 = dataset.apk_info["sha256"][0]
+weights = dataset.load_cache(sha256).rename({"weights": sha256})
+
+for sha256 in dataset.apk_info["sha256"][1:]:
+    next_dataframe = (
+        dataset.load_cache(sha256).rename({"weights": sha256}).drop("rule")
+    )
+    weights = weights.join(
+        next_dataframe, on="index", how="left", maintain_order="left"
+    )
+
+row_rule_scores = model.get_rule_scores().cpu().detach().tolist()
+rule_scores = pl.DataFrame(row_rule_scores, schema={"rule_score": pl.Float32}).with_row_index()
+weights_and_rule_scores = weights.join(
+    rule_scores,
+    on="index",
+    how="left",
+    maintain_order="left",
+)
+new_column_names = ["sha256", "y_truth", "y_pred_row", "y_pred"] + weights["rule"].to_list()
+
+combined = weights_and_rule_scores.drop("rule").transpose(
+        include_header=True,
+        header_name="sha256",
+        column_names=weights["rule"],
+    ).join(
+    apk_prediction,
+    on="sha256",
+    how="full",
+    maintain_order="left"
+    ).select(new_column_names)
+    
+combined.write_csv("apk_prediction.csv", include_header=True)
 # %%
 # Apply Rule scores
 if input("Apply the rule scores? (Y/N)").lower() == "N":
@@ -315,9 +361,9 @@ rule_index = pl.read_csv(
     columns=["index", "rule_path"],
 )
 
-optimized_rule_score = optimized_rule_score.with_row_index()
+optimized_rule_score = rule_index.with_row_index()
 
-combine = optimized_rule_score.join(on="index", how="left")
+combine = rule_index.join(on="index", how="left")
 
 for row in combine.to_dicts():
     ruleId, rule_path = row["index"], row["rule_path"]
@@ -332,4 +378,3 @@ for row in combine.to_dicts():
 
     with open(rule_path, "w") as f:
         json.dump(rule_data, f, indent=4)
-        
