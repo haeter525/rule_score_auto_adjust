@@ -9,10 +9,10 @@ import os
 
 STAGE_WEIGHT_MAPPING = {
     0.0: 0.0,
-    1.0: 0.0625,
-    2.0: 0.125,
-    3.0: 0.25,
-    4.0: 0.5,
+    1.0: 0.0,
+    2.0: 0.0,
+    3.0: 0.0,
+    4.0: 0.0,
     5.0: 1.0,
 }
 
@@ -111,7 +111,7 @@ class ApkDataset(torch.utils.data.Dataset):
 
         rule_to_filter_out = []
         for rule in self.rules["rule"]:
-            has_any_passing_stage_5 = any(
+            only_pass_stage_5_on_malware = any(
                 [
                     any(
                         [
@@ -121,11 +121,11 @@ class ApkDataset(torch.utils.data.Dataset):
                             .to_list()
                         ]
                     )
-                    for sha256 in self.apk_info["sha256"]
+                    for sha256 in self.apk_info.filter(pl.col("is_malicious").eq(1))["sha256"]
                 ]
             )
 
-            if not has_any_passing_stage_5:
+            if not only_pass_stage_5_on_malware:
                 print(f"Rule {rule} has no passing stage 5.")
                 rule_to_filter_out.append(rule)
 
@@ -234,6 +234,15 @@ class ApkDataset(torch.utils.data.Dataset):
 
         return indexed_result
 
+    def get_apk_info(self) -> pl.DataFrame:
+        dataframe = (
+            self.load_cache(sha256).rename({"weights": sha256})
+            for sha256 in self.apk_info['sha256']
+        )
+        
+        return pl.concat(dataframe, how="horizontal")
+            
+
     @staticmethod
     def cache_folder() -> Path:
         folder = Path(os.getenv("DATASET_FOLDER")) / "cache"
@@ -262,10 +271,10 @@ class ApkDataset(torch.utils.data.Dataset):
             indexed_result.select("weights")
             .transpose()
             .to_torch(dtype=pl.Float32)
-        )
+        ).view(-1)
 
         expected_score = torch.tensor(
-            self.apk_info[index]["is_malicious"], dtype=torch.float32
+            self.apk_info.item(index, "is_malicious"), dtype=torch.float32
         )
 
         return indexed_result_torch, expected_score

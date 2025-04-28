@@ -1,0 +1,26 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Clean",
+            "type": "shell",
+            "command": "rm data/confidences/*.csv data/reports/*.json *.csv",
+            "options": {
+                "cwd": "/Users/shengfeng/codespace/rule_score_auto_adjust"
+            },
+            "dependsOn":[
+                "Reset Quark Rules"
+            ]
+        },
+        {
+            "label": "Reset Quark Rules",
+            "type": "shell",
+            "command": "git reset --hard HEAD",
+            "options": {
+                "cwd": "/Users/shengfeng/codespace/quark-rules"
+            }
+        }
+    ]
+}
