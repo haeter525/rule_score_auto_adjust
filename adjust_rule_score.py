@@ -2,7 +2,6 @@
 import datetime
 from pathlib import Path
 import os
-from tqdm.auto import tqdm
 import dotenv
 import polars
 
@@ -84,7 +83,7 @@ model
 # Load Model From File
 import torch
 model.load_state_dict(
-    torch.load("model_logs/model_20250429_024124_992", weights_only=True)
+    torch.load("manually_saved_model/0429_acc_84", weights_only=True)
 )
 model.eval()
 
@@ -133,7 +132,7 @@ y_exp = torch.tensor([0.0, 1.0, 1.0, 0.0, 0.0])
 loss_value = loss_fn(y_pred, y_exp)
 
 print("Loss:", loss_value.item())
-
+best_model_param_path = None
 
 # %%
 # Train
@@ -259,7 +258,7 @@ def run_epochs(learning_rate, epochs=100):
 
 
 # %%
-lrs = [25] * 10
+lrs = [30] * 10
 best_model_param_path = None
 # lrs = [1]
 for lr in lrs:

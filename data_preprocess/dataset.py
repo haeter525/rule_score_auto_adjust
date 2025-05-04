@@ -49,6 +49,17 @@ def all_analysis_result_are_ready(dataset: "ApkDataset", sha256: str) -> bool:
         return True
     return indexed_result["weights"].null_count() == 0
 
+def drop_benign_apks_whose_analysis_result_is_same_with_malware(dataset: "ApkDataset", sha256: str) -> bool:
+    APK_TO_DROP = {
+        "0002AAE56E7F80D54F6AA3EB7DA8BA9A28E58A3ECE3B15171FCF5EBEE30B95FE",
+        "0002196E3C3904632CD03D32AB649C63E02B320E19D13134AF9196BDD69FEA38",
+        "000186F14A4B204F0F40627EA5480004C939AC80D8BAA203A510E55BD6FE5C78",
+        "000478113CC2750DF15EE09CB81B7E17D1C27C85F26D075D487D3AD6CAD51BB8",
+        "00046289C6B726BB7600933EE6A83BED17C35F18D37C3795A59A8AE526BFB6CE",
+        "0000499EBC668A309BC345F0F9B7C32CEA341F8FCB35F29F66C88F87A425CE58",
+    }
+    
+    return sha256 not in APK_TO_DROP
 
 class ApkDataset(torch.utils.data.Dataset):
 
@@ -59,6 +70,7 @@ class ApkDataset(torch.utils.data.Dataset):
         apk_filter_funcs: Callable[["ApkDataset", str], bool] = [
             has_passing_stage_5_on_any_rule,
             all_analysis_result_are_ready,
+            drop_benign_apks_whose_analysis_result_is_same_with_malware,
         ],
     ):
 
@@ -121,7 +133,7 @@ class ApkDataset(torch.utils.data.Dataset):
                             .to_list()
                         ]
                     )
-                    for sha256 in self.apk_info.filter(pl.col("is_malicious").eq(1))["sha256"]
+                    for sha256 in self.apk_info["sha256"]
                 ]
             )
 
