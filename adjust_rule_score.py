@@ -81,11 +81,11 @@ model
 
 # %%
 # Load Model From File
-import torch
-model.load_state_dict(
-    torch.load("manually_saved_model/0429_acc_84", weights_only=True)
-)
-model.eval()
+# import torch
+# model.load_state_dict(
+#     torch.load("manually_saved_model/0429_acc_84", weights_only=True)
+# )
+# model.eval()
 
 # %%
 # Move Model to GPU
