@@ -8,10 +8,10 @@ import polars
 dotenv.load_dotenv()
 
 PATH_TO_DATASET = [
-    Path("/mnt/storage/rule_score_auto_adjust/data/dataset/dataset.csv"),
+    Path("/mnt/storage/data/dataset/top_0.4.csv"),
 ]
 PATH_TO_RULE_LIST = (
-    "/mnt/storage/data/rule_list/selected_rules_result_on_benign.csv"
+    "/mnt/storage/rule_score_auto_adjust/data/rule_top_1000.csv"
 )
 NUM_OF_RULES = len(
     set(
@@ -20,7 +20,6 @@ NUM_OF_RULES = len(
         .to_list()
     )
 )
-
 
 # %%
 import polars
@@ -74,10 +73,13 @@ import json
 
 # %%
 # Build Model
-from model import RuleAdjustmentModel_NoTotalScore, RuleAdjustmentModel
+from model import (
+    RuleAdjustmentModel_NoTotalScore_Percentage,
+    RuleAdjustmentModel,
+)
 
-model = RuleAdjustmentModel_NoTotalScore(NUM_OF_RULES)
-model
+model = RuleAdjustmentModel_NoTotalScore_Percentage(NUM_OF_RULES)
+print(model)
 
 # %%
 # Load Model From File
@@ -103,7 +105,12 @@ from data_preprocess import apk, dataset
 from tqdm import tqdm
 
 rules = (
-    pl.read_csv(PATH_TO_RULE_LIST, has_header=True, columns=["rule"])
+    pl.read_csv(
+        PATH_TO_RULE_LIST,
+        has_header=True,
+        columns=["rule"],
+        schema={"rule": pl.String()},
+    )
     .to_series()
     .to_list()
 )
@@ -133,6 +140,7 @@ loss_value = loss_fn(y_pred, y_exp)
 
 print("Loss:", loss_value.item())
 best_model_param_path = None
+
 
 # %%
 # Train
@@ -258,7 +266,7 @@ def run_epochs(learning_rate, epochs=100):
 
 
 # %%
-lrs = [30] * 10
+lrs = [800] * 1
 best_model_param_path = None
 # lrs = [1]
 for lr in lrs:
@@ -269,7 +277,6 @@ for lr in lrs:
 print("Down")
 
 # %%
-from tqdm import tqdm
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -327,53 +334,57 @@ for sha256 in dataset.apk_info["sha256"][1:]:
     )
 
 row_rule_scores = model.get_rule_scores().cpu().detach().tolist()
-rule_scores = pl.DataFrame(row_rule_scores, schema={"rule_score": pl.Float32}).with_row_index()
+rule_scores = pl.DataFrame(
+    row_rule_scores, schema={"rule_score": pl.Float32}
+).with_row_index()
 weights_and_rule_scores = weights.join(
     rule_scores,
     on="index",
     how="left",
     maintain_order="left",
 )
-new_column_names = ["sha256", "y_truth", "y_pred_row", "y_pred"] + weights["rule"].to_list()
+new_column_names = ["sha256", "y_truth", "y_pred_row", "y_pred"] + weights[
+    "rule"
+].to_list()
 
-combined = weights_and_rule_scores.drop("rule").transpose(
+combined = (
+    weights_and_rule_scores.drop("rule")
+    .transpose(
         include_header=True,
         header_name="sha256",
         column_names=weights["rule"],
-    ).join(
-    apk_prediction,
-    on="sha256",
-    how="full",
-    maintain_order="left"
-    ).select(new_column_names)
-    
+    )
+    .join(apk_prediction, on="sha256", how="full", maintain_order="left")
+    .select(new_column_names)
+)
+
 combined.write_csv("apk_prediction.csv", include_header=True)
 # %%
 # Apply Rule scores
-if input("Apply the rule scores? (Y/N)").lower() == "N":
-    sys.exit(0)
+# if input("Apply the rule scores? (Y/N)").lower() == "N":
+#     sys.exit(0)
 
-# PATH_TO_RULES = "/Users/shengfeng/codespace/quark-rules/rules"
-rule_index = pl.read_csv(
-    "data/rule_top_1000_index.csv",
-    has_header=True,
-    columns=["index", "rule_path"],
-)
+# # PATH_TO_RULES = "/Users/shengfeng/codespace/quark-rules/rules"
+# rule_index = pl.read_csv(
+#     "data/rule_top_1000_index.csv",
+#     has_header=True,
+#     columns=["index", "rule_path"],
+# )
 
-optimized_rule_score = rule_index.with_row_index()
+# optimized_rule_score = rule_index.with_row_index()
 
-combine = rule_index.join(on="index", how="left")
+# combine = rule_index.join(on="index", how="left")
 
-for row in combine.to_dicts():
-    ruleId, rule_path = row["index"], row["rule_path"]
-    if not os.path.exists(rule_path):
-        continue
+# for row in combine.to_dicts():
+#     ruleId, rule_path = row["index"], row["rule_path"]
+#     if not os.path.exists(rule_path):
+#         continue
 
-    value = round(row["rule_score"], 2)
-    print(f"更新 {rule_path} 規則分數為 {value}")
-    with open(rule_path, "r") as f:
-        rule_data = json.loads(f.read())
-        rule_data["score"] = value
+#     value = round(row["rule_score"], 2)
+#     print(f"更新 {rule_path} 規則分數為 {value}")
+#     with open(rule_path, "r") as f:
+#         rule_data = json.loads(f.read())
+#         rule_data["score"] = value
 
-    with open(rule_path, "w") as f:
-        json.dump(rule_data, f, indent=4)
+#     with open(rule_path, "w") as f:
+#         json.dump(rule_data, f, indent=4)

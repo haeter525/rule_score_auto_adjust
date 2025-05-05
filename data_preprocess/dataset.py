@@ -1,5 +1,5 @@
 import functools
-from typing import Callable
+from typing import Callable, Iterable, override
 import torch
 from data_preprocess import analysis_result, apk
 from tqdm import tqdm
@@ -8,12 +8,12 @@ import polars as pl
 import os
 
 STAGE_WEIGHT_MAPPING = {
-    0.0: (2**0)/(2**5),
-    1.0: (2**1)/(2**5),
-    2.0: (2**2)/(2**5),
-    3.0: (2**3)/(2**5),
-    4.0: (2**4)/(2**5),
-    5.0: (2**5)/(2**5),
+    0.0: (2**0) / (2**5),
+    1.0: (2**1) / (2**5),
+    2.0: (2**2) / (2**5),
+    3.0: (2**3) / (2**5),
+    4.0: (2**4) / (2**5),
+    5.0: (2**5) / (2**5),
 }
 
 DATASET_SCHEMA = {
@@ -21,13 +21,18 @@ DATASET_SCHEMA = {
     "is_malicious": pl.Int32,
 }
 
-CACHE_SCHEMA = {
-    "index": pl.Int64,
-    "rule": pl.String,
-    "weights": pl.Float32
-}
+CACHE_SCHEMA = {"index": pl.Int64, "rule": pl.String, "weights": pl.Float32}
 
-def has_passing_stage_5_on_any_rule(
+
+def apk_have_analysis_results(dataset: "ApkDataset", sha256: str) -> bool:
+    return analysis_result.get_file(sha256).exists()
+
+
+def apk_exists(dataset: "ApkDataset", sha256: str) -> bool:
+    return apk.get(sha256).exists()
+
+
+def apk_has_passing_stage_5_on_any_rule(
     dataset: "ApkDataset", sha256: str
 ) -> bool:
     indexed_result = dataset.load_cache(sha256)
@@ -38,9 +43,8 @@ def has_passing_stage_5_on_any_rule(
         pl.col("weights").eq(1)
     )
     return (
-        (not num_of_rules_passing_stage_5.is_empty())
-        and num_of_rules_passing_stage_5.item(0, "count") > 0
-    )
+        not num_of_rules_passing_stage_5.is_empty()
+    ) and num_of_rules_passing_stage_5.item(0, "count") > 0
 
 
 def all_analysis_result_are_ready(dataset: "ApkDataset", sha256: str) -> bool:
@@ -49,7 +53,10 @@ def all_analysis_result_are_ready(dataset: "ApkDataset", sha256: str) -> bool:
         return True
     return indexed_result["weights"].null_count() == 0
 
-def drop_benign_apks_whose_analysis_result_is_same_with_malware(dataset: "ApkDataset", sha256: str) -> bool:
+
+def drop_benign_apks_whose_analysis_result_is_same_with_malware(
+    dataset: "ApkDataset", sha256: str
+) -> bool:
     APK_TO_DROP = {
         "0002AAE56E7F80D54F6AA3EB7DA8BA9A28E58A3ECE3B15171FCF5EBEE30B95FE",
         "0002196E3C3904632CD03D32AB649C63E02B320E19D13134AF9196BDD69FEA38",
@@ -58,17 +65,20 @@ def drop_benign_apks_whose_analysis_result_is_same_with_malware(dataset: "ApkDat
         "00046289C6B726BB7600933EE6A83BED17C35F18D37C3795A59A8AE526BFB6CE",
         "0000499EBC668A309BC345F0F9B7C32CEA341F8FCB35F29F66C88F87A425CE58",
     }
-    
+
     return sha256 not in APK_TO_DROP
+
 
 class ApkDataset(torch.utils.data.Dataset):
 
     def __init__(
         self,
         data_index_files: list[Path],
-        rules: set[str],
-        apk_filter_funcs: Callable[["ApkDataset", str], bool] = [
-            has_passing_stage_5_on_any_rule,
+        rules: Iterable[str],
+        apk_filter_funcs: list[Callable[["ApkDataset", str], bool]] = [
+            apk_exists,
+            apk_have_analysis_results,
+            apk_has_passing_stage_5_on_any_rule,
             all_analysis_result_are_ready,
             drop_benign_apks_whose_analysis_result_is_same_with_malware,
         ],
@@ -84,13 +94,28 @@ class ApkDataset(torch.utils.data.Dataset):
             .with_row_index()
         )
 
+        need_to_prepare_dataset = True
+        if self.hash_storage().exists():
+            with self.hash_storage().open("r") as file:
+                need_to_prepare_dataset = (
+                    file.readline().strip() == str(self.__hash__())
+                )
+
+        with self.hash_storage().open("w") as hash_file:
+            hash_file.write(str(self.__hash__()))
+
         # Load analysis result for each binary and rule.
-        for sha256 in tqdm(self.apk_info["sha256"], desc="Preparing Dataset"):
-            indexed_result = self.__prepare_analysis_result(sha256)
-            self.save_cache(sha256, indexed_result)
+        if need_to_prepare_dataset:
+            for sha256 in tqdm(
+                self.apk_info["sha256"], desc="Preparing Dataset"
+            ):
+                indexed_result = self.__prepare_analysis_result(sha256)
+                self.save_cache(sha256, indexed_result)
 
         # Filter out apks based on filter_funcs
-        for filter_func in tqdm(apk_filter_funcs, desc="Filtering Dataset"):
+        for filter_func in tqdm(
+            iterable=apk_filter_funcs, desc="Filtering Dataset"
+        ):
             self.filter_apk(filter_func)
 
         assert not self.apk_info.is_empty(), "APK dataset is empty."
@@ -147,21 +172,30 @@ class ApkDataset(torch.utils.data.Dataset):
         print(f"Num of rules: {len(self.rules)}")
         print(f"Num of apks: {len(self.apk_info)}")
 
+    @override
+    def __hash__(self) -> int:
+        hash_value = sum(hash(val) for val in self.apk_info["sha256"])
+        hash_value += sum(hash(val) for val in self.rules["rule"])
+        
+        return hash_value
+
+    def hash_storage(self) -> Path:
+        return self.working_folder() / "hash"
+
     def filter_apk(
         self, filter_func: Callable[["ApkDataset", str], bool]
     ) -> None:
-        partial_filter_func = functools.partial(
-            filter_func, self
-        )
+        partial_filter_func = functools.partial(filter_func, self)
         apk_to_drop = self.apk_info.filter(
-            pl.col("sha256").map_elements(
-                partial_filter_func, return_dtype=pl.Boolean
-            ).not_()
+            pl.col("sha256")
+            .map_elements(partial_filter_func, return_dtype=pl.Boolean)
+            .not_()
         )
-        print(
-            f"Dropping APKs {filter_func.__name__}:",
-            apk_to_drop["sha256"].to_list(),
-        )
+
+        log_file = self.log_folder() / f"filter_{filter_func.__name__}.csv"
+        apk_to_drop.write_csv(log_file, include_header=True)
+
+        print(f"Dropping {len(apk_to_drop)} APKs, see {log_file} for details")
 
         self.apk_info = self.apk_info.filter(
             pl.col("sha256").is_in(apk_to_drop["sha256"]).not_()
@@ -180,21 +214,6 @@ class ApkDataset(torch.utils.data.Dataset):
         ]
         dataset = pl.concat(__dataset_df)
 
-        # Filter out apk not exits
-        dataset = dataset.filter(
-            pl.col("sha256").map_elements(
-                lambda x: apk.get(x).exists(), return_dtype=pl.Boolean
-            )
-        )
-
-        # Filter out analysis result not exits
-        dataset = dataset.filter(
-            pl.col("sha256").map_elements(
-                lambda x: analysis_result.get_file(x).exists(),
-                return_dtype=pl.Boolean,
-            )
-        )
-
         return dataset
 
     def __prepare_analysis_result(self, sha256: str) -> pl.DataFrame:
@@ -206,10 +225,12 @@ class ApkDataset(torch.utils.data.Dataset):
                 }
             )
             .with_columns(
-                pl.col("passing_stage").map_elements(
+                pl.col("passing_stage")
+                .map_elements(
                     lambda x: STAGE_WEIGHT_MAPPING.get(float(x), 0.0),
                     return_dtype=pl.Float32,
-                ).alias("weights"),
+                )
+                .alias("weights"),
                 pl.col("rule").map_elements(
                     lambda x: x.split("/")[-1],
                     return_dtype=pl.String,
@@ -249,32 +270,39 @@ class ApkDataset(torch.utils.data.Dataset):
     def get_apk_info(self) -> pl.DataFrame:
         dataframe = (
             self.load_cache(sha256).rename({"weights": sha256})
-            for sha256 in self.apk_info['sha256']
+            for sha256 in self.apk_info["sha256"]
         )
-        
+
         return pl.concat(dataframe, how="horizontal")
-            
 
     @staticmethod
-    def cache_folder() -> Path:
-        folder = Path(os.getenv("DATASET_FOLDER")) / "cache"
+    def __createIfNotExists(folder: Path) -> Path:
         folder.mkdir(parents=True, exist_ok=True)
         return folder
 
-    @staticmethod
-    def save_cache(sha256: str, indexed_result: pl.DataFrame) -> None:
-        cache_file = ApkDataset.cache_folder() / f"{sha256}.csv"
-        indexed_result.select(CACHE_SCHEMA.keys()).write_csv(cache_file, include_header=True)
+    def working_folder(self) -> Path:
+        return self.__createIfNotExists(
+            Path(os.getenv("DATASET_FOLDER", "NOT_DEFINED")) / type(self).__name__
+        )
 
-    @staticmethod
-    def load_cache(sha256: str) -> pl.DataFrame | None:
-        cache_file = ApkDataset.cache_folder() / f"{sha256}.csv"
-        if not cache_file.exists():
-            return None
+    def cache_folder(self) -> Path:
+        return self.__createIfNotExists(self.working_folder() / "cache")
+
+    def log_folder(self) -> Path:
+        return self.__createIfNotExists(self.working_folder() / "log")
+
+    def save_cache(self, sha256: str, indexed_result: pl.DataFrame) -> None:
+        cache_file = self.cache_folder() / f"{sha256}.csv"
+        indexed_result.select(CACHE_SCHEMA.keys()).write_csv(
+            cache_file, include_header=True
+        )
+
+    def load_cache(self, sha256: str) -> pl.DataFrame:
+        cache_file = self.cache_folder() / f"{sha256}.csv"
         return pl.read_csv(cache_file, has_header=True, schema=CACHE_SCHEMA)
 
     @functools.cache
-    def __getitem__(self, index) -> torch.Tensor:
+    def __getitem__(self, index) -> tuple[torch.Tensor, torch.Tensor]:
         sha256 = self.apk_info.item(row=index, column="sha256")
 
         indexed_result = self.load_cache(sha256)
@@ -295,4 +323,4 @@ class ApkDataset(torch.utils.data.Dataset):
         return len(self.apk_info)
 
     def verify(self) -> bool:
-        [n for n in tqdm(self, desc="Checking Dataset")]
+        return all([n for n in tqdm(iterable=self, desc="Checking Dataset")])
