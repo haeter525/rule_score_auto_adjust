@@ -16,11 +16,6 @@ STAGE_WEIGHT_MAPPING = {
     5.0: (2**5) / (2**5),
 }
 
-DATASET_SCHEMA = {
-    "sha256": pl.String,
-    "is_malicious": pl.Int32,
-}
-
 CACHE_SCHEMA = {"index": pl.Int64, "rule": pl.String, "weights": pl.Float32}
 
 
@@ -29,7 +24,7 @@ def apk_have_analysis_results(dataset: "ApkDataset", sha256: str) -> bool:
 
 
 def apk_exists(dataset: "ApkDataset", sha256: str) -> bool:
-    return apk.get(sha256).exists()
+    return apk._get_path(sha256).exists()
 
 
 def apk_has_passing_stage_5_on_any_rule(
@@ -79,7 +74,7 @@ class ApkDataset(torch.utils.data.Dataset):
             apk_exists,
             apk_have_analysis_results,
             apk_has_passing_stage_5_on_any_rule,
-            all_analysis_result_are_ready,
+            # all_analysis_result_are_ready,
             drop_benign_apks_whose_analysis_result_is_same_with_malware,
         ],
     ):
@@ -152,7 +147,7 @@ class ApkDataset(torch.utils.data.Dataset):
                 [
                     any(
                         [
-                            float(stage) == 1.0
+                            stage and float(stage) == 1.0
                             for stage in self.load_cache(sha256)
                             .filter(pl.col("rule").eq(rule))["weights"]
                             .to_list()
@@ -208,7 +203,7 @@ class ApkDataset(torch.utils.data.Dataset):
                 dataset_path,
                 has_header=True,
                 columns=["sha256", "is_malicious"],
-                schema_overrides=DATASET_SCHEMA,
+                schema_overrides=apk.APK_SCHEMA,
             )
             for dataset_path in datasets
         ]
@@ -309,6 +304,8 @@ class ApkDataset(torch.utils.data.Dataset):
 
         indexed_result_torch = (
             indexed_result.select("weights")
+            .fill_nan(0.0)
+            .fill_null(0.0)
             .transpose()
             .to_torch(dtype=pl.Float32)
         ).view(-1)

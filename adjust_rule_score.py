@@ -38,32 +38,32 @@ print(f"Num of apk: {len(sha256_list)}")
 
 # %%
 # 確認 Quark 分析結果都在
-import data_preprocess.analysis_result as analysis_result
+# import data_preprocess.analysis_result as analysis_result
 
-apk_infos = {
-    sha256: {
-        "analysis_result": (
-            file
-            if (file := analysis_result.get_file(sha256)).exists()
-            else None
-        )
-    }
-    for sha256 in sha256_list
-}
+# apk_infos = {
+#     sha256: {
+#         "analysis_result": (
+#             file
+#             if (file := analysis_result.get_file(sha256)).exists()
+#             else None
+#         )
+#     }
+#     for sha256 in sha256_list
+# }
 
-analysis_report_missing = [
-    sha256
-    for sha256, info in apk_infos.items()
-    if (file := info["analysis_result"]) is None
-]
+# analysis_report_missing = [
+#     sha256
+#     for sha256, info in apk_infos.items()
+#     if (file := info["analysis_result"]) is None
+# ]
 
-if len(analysis_report_missing) != 0:
-    print(
-        f"{len(analysis_report_missing)} analysis reports are missing. Check variable `analysis_report_missing` for details."
-    )
+# if len(analysis_report_missing) != 0:
+#     print(
+#         f"{len(analysis_report_missing)} analysis reports are missing. Check variable `analysis_report_missing` for details."
+#     )
 
-for sha256 in analysis_report_missing:
-    del apk_infos[sha256]
+# for sha256 in analysis_report_missing:
+#     del apk_infos[sha256]
 
 # %%
 from data_preprocess import analysis_result
@@ -266,7 +266,7 @@ def run_epochs(learning_rate, epochs=100):
 
 
 # %%
-lrs = [800] * 1
+lrs = [1000000] * 1
 best_model_param_path = None
 # lrs = [1]
 for lr in lrs:
