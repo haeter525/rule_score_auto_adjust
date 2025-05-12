@@ -87,6 +87,9 @@ def main(dataset: str, n_workers, threads_per_worker, memory_limit):
     cluster.close()
 
 if __name__ == "__main__":
+    mem_bytes = 22 * 1024 * 1024 * 1024  # 20 GB
+    resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
+    
     for setting in cluster_setting:
         print(f"{setting=}")
         main("data/lists/benignAPKs_top_0.4_vt_scan_date.csv", **setting)
