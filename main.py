@@ -5,7 +5,8 @@ import data_preprocess.analysis_result as analysis_result_lib
 import dask
 import dask.diagnostics
 from dask.distributed import Client, LocalCluster, as_completed
-
+import resource
+from tqdm import tqdm
 
 def download_apk(sha256):
     return sha256, apk_lib.download(sha256)
