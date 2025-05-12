@@ -36,6 +36,8 @@ def main(dataset: str, n_workers, threads_per_worker, memory_limit):
     print(f"Dashboard Link: {cluster.dashboard_link}")
 
     sha256s = apk_lib.load_list(dataset)["sha256"].to_list()
+    sha256s.sort(key=lambda sha256: apk_lib._get_path(sha256).stat().st_size)
+    
     rules = [
         rule_lib.get(rule_name)
         for rule_name in rule_lib.load_list("data/rule_top_1000.csv")["rule"].to_list()
