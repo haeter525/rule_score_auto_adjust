@@ -63,7 +63,7 @@ def main(dataset: str, n_workers, threads_per_worker, memory_limit):
 
     success_task_results = [
         task.result()
-        for task in as_completed(analyze_apk_tasks)
+        for task in tqdm(as_completed(analyze_apk_tasks), total=len(analyze_apk_tasks))
         if task.status != "error"
     ]
 
