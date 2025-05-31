@@ -6,47 +6,41 @@ import ray
 import ray.data
 import ray.core
 import resource
+from pathlib import Path
+import pandas as pd
+from typing import Dict, Any
+import functools
 
-@ray.remote
-def download_apk(sha256):
-    return {"sha256": sha256, "apk_path": apk_lib.download(sha256)}
+def download_apk(row: Dict[str, Any]) -> Dict[str, Any]:
+    row["apk_path"] = str(apk_lib.download(row["sha256"]))
+    return row
 
-@ray.remote(num_cpus=4)
-def analyze_apk(sha256, apk_path, rules):
-    return {"sha256": sha256, "analysis_result": analysis_result_lib.analyze_rules(sha256, apk_path, rules)}
+def analyze_apk(row: Dict[str, Any], rules: list[Path]) -> Dict[str, Any]:
+    row["analysis_result"] = analysis_result_lib.analyze_rules(
+        row["sha256"], Path(row["apk_path"]), rules
+    )
+    return row
 
 
-def main(dataset: str):
+def main(sha256s: list[str], rules: list[Path]):
     ray.init()
 
-    sha256s = apk_lib.load_list(dataset)["sha256"].to_list()
-    sha256s.sort(key=lambda sha256: apk_lib._get_path(sha256).stat().st_size)
+    sha256s_pl = pd.DataFrame({"sha256": sha256s})
+    sha256s_pl = sha256s_pl.assign(size=sha256s_pl["sha256"].apply(lambda x: apk_lib._get_path(x).stat().st_size))
+    sha256s_pl = sha256s_pl.sort_values("size")
+
+    dataset = ray.data.from_pandas(sha256s_pl)
+    dataset = dataset.map(download_apk)
+
+    dataset = dataset.filter(lambda row: row["apk_path"] is not None)
     
-    rules = [
-        rule_lib.get(rule_name)
-        for rule_name in rule_lib.load_list("data/rule_top_1000.csv")["rule"].to_list()
-    ]
+    partial_analyze_apk = functools.partial(analyze_apk, rules=rules)
+    dataset = dataset.map(partial_analyze_apk, num_cpus=4)
 
-    download_apk_results = ray.get([download_apk.remote(sha256) for sha256 in sha256s])
-
-    success_task_results = [
-        result
-        for result in download_apk_results
-        if result["apk_path"] is not None
-    ]
-
-    analyze_apk_tasks = [
-        analyze_apk.remote(result["sha256"], result["apk_path"], rules)
-        for result in success_task_results
-    ]
-
-    analyze_apk_results = ray.get(analyze_apk_tasks)
-
-    success_task_results = [
-        result
-        for result in analyze_apk_results
-        if result["analysis_result"] is not None
-    ]
+    success_task_results = []
+    for result in dataset.iter_rows():
+        if result["analysis_result"] is not None:
+            success_task_results.append(result)
 
     success_sha256s = [result["sha256"] for result in success_task_results]
     print(f"Complete analysis {len(sha256s)} APKs on {len(rules)} rules")
@@ -64,9 +58,20 @@ def main(dataset: str):
 
     ray.shutdown()
 
+
 if __name__ == "__main__":
     mem_bytes = 22 * 1024 * 1024 * 1024  # 20 GB
     resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
-    
-    main("data/lists/benignAPKs_top_0.4_vt_scan_date.csv")
-        
+
+    sha256s = apk_lib.load_list(
+        "/mnt/storage/data/rule_to_release/0611/droidkungfu.csv"
+    )["sha256"].to_list()
+
+    rules = [
+        rule_lib.get(rule_name)
+        for rule_name in rule_lib.load_list(
+            "/mnt/storage/data/rule_to_release/0611/all_rules.csv"
+        )["rule"].to_list()
+    ]
+
+    main(sha256s, rules)
