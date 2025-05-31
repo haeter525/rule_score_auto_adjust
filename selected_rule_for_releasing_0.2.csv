@@ -1,0 +1,35 @@
+rule,category,rule_score,description
+386_3.json,數據收集與存取敏感資訊,535.8218994140625,Retrieve data from a database cursor and move to the next record
+99.json,數據收集與存取敏感資訊,522.1025390625,Retrieve the column index and extract the string value from a database cursor.
+18_3.json,數據收集與存取敏感資訊,456.9253234863281,Query data from a content provider and retrieve a string value from the result cursor.
+16_1.json,數據收集與存取敏感資訊,426.5375061035156,Query data using a URI and retrieve the index of a specific column in the cursor.
+2966.json,數據收集與存取敏感資訊,408.7264099121094,Read data from a cursor by moving to the first record and retrieving a string value.
+293.json,數據收集與存取敏感資訊,404.5491027832031,Retrieve the package manager and get package information for the application.
+1048.json,數據收集與存取敏感資訊,378.1777648925781,Retrieve the latitude from location data and check if logging is enabled for a specific tag.
+2569.json,數據收集與存取敏感資訊,351.65087890625,Retrieve location time and longitude data.
+2910.json,數據收集與存取敏感資訊,347.11126708984375,Retrieve a string from a cursor and then close the cursor.
+635.json,數據收集與存取敏感資訊,133.7437744140625,Retrieve a column index from a database cursor and store a string in SharedPreferences.
+273.json,數據收集與存取敏感資訊,161.3478546142578,Retrieve data from a cursor by moving to the next record and getting a long value
+1622.json,數據收集與存取敏感資訊,194.2227325439453,Retrieve a secure setting value and log a warning message.
+2520.json,數據收集與存取敏感資訊,189.83627319335938,Check if logging is enabled and retrieve the current latitude.
+2678.json,數據收集與存取敏感資訊,188.21829223632812,Close the cursor after retrieving an integer value from it.
+2552.json,數據收集與存取敏感資訊,145.51858520507812,Check if logging is enabled and retrieve a secure setting value.
+633.json,數據收集與存取敏感資訊,150.39523315429688,Access the content resolver and move the cursor to the first entry.
+1323_2.json,數據收集與存取敏感資訊,123.74205780029297,Iterate through data and close the cursor afterward.
+24_17.json,數據收集與存取敏感資訊,111.69126892089844,Retrieve the application context and access the content resolver to manage app data.
+454.json,數據收集與存取敏感資訊,118.43733215332031,Parse a string into a URI and access the content resolver for data operations.
+943_1.json,數據收集與存取敏感資訊,271.992919921875,Query the content resolver and retrieve the number of items in a cursor.
+77_8.json,數據收集與存取敏感資訊,265.78179931640625,Query data using ContentResolver and obtain the number of results from the Cursor
+15_3.json,數據收集與存取敏感資訊,129.88755798339844,Query data using ContentResolver and close the cursor afterward.
+2521.json,數據收集與存取敏感資訊,302.6811218261719,Check if logging is enabled and retrieve the current longitude from location data.
+354_4.json,數據傳輸與命令控制通訊,545.1013793945312,Retrieve a system service and check for active network connectivity.
+68_7.json,數據傳輸與命令控制通訊,273.62969970703125,Create an intent with a string and start a service using that intent.
+1564.json,數據傳輸與命令控制通訊,170.36190795898438,Start a new service using an intent in the current context.
+36_11.json,數據傳輸與命令控制通訊,,
+186_11.json,數據傳輸與命令控制通訊,110.1334228515625,Retrieve the package manager and check for active network connectivity.
+531.json,數據傳輸與命令控制通訊,244.2725372314453,Retrieve the system service and check if the network is connected.
+1593.json,應用程式操作(Install/Uninstall),695.696533203125,Create and start an activity using an intent with a specific action and data URI.
+415.json,應用程式操作(Install/Uninstall),689.036865234375,Create and start a service using an intent.
+359.json,應用程式操作(Install/Uninstall),236.0443878173828,Get the package manager and create an intent to start a specific class in the application.
+962_2.json,應用程式操作(Install/Uninstall),188.821533203125,Create an intent to start an activity and resolve the activity using the package manager.
+293.json,應用程式操作(Install/Uninstall),404.5491027832031,Retrieve the package manager and get package information for the application.

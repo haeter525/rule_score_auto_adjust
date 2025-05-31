@@ -8,18 +8,62 @@ import polars
 dotenv.load_dotenv()
 
 PATH_TO_DATASET = [
-    Path("/mnt/storage/data/dataset/top_0.4.csv"),
+    Path("data/lists/benignAPKs_top_0.4_vt_scan_date.csv"),
+    Path("data/lists/maliciousAPKs_top_0.4_vt_scan_date.csv"),
 ]
-PATH_TO_RULE_LIST = (
+
+PATH_TO_RULE_LIST = [
     "/mnt/storage/rule_score_auto_adjust/data/rule_top_1000.csv"
-)
-NUM_OF_RULES = len(
-    set(
-        polars.read_csv(PATH_TO_RULE_LIST, has_header=True, columns=["rule"])
-        .to_series()
-        .to_list()
-    )
-)
+]
+
+# %%
+import data_preprocess.rule as rule_lib
+import polars as pl
+rules = pl.concat(list(map(rule_lib.load_list, PATH_TO_RULE_LIST)))["rule"].to_list()
+rule_paths = [rule_lib.get(r) for r in rules]
+# %%
+from dataclasses import dataclass
+import data_preprocess.apk as apk_lib
+import data_preprocess.analysis_result as analysis_result_lib
+import tqdm
+
+@dataclass()
+class ApkInfo:
+    is_malicious: int = None
+    path: Path = None
+    analysis_result: dict[str,int] = None
+    
+    def __init__(self, sha256:str, is_malicious: int):
+        self.is_malicious = is_malicious
+        self.path = apk_lib.download(sha256, dry_run=True)
+        self.analysis_result = analysis_result_lib.analyze_rules(sha256, self.path, rule_paths, dry_run=True)
+    
+sha256_table = pl.concat(list(map(apk_lib.load_list, PATH_TO_DATASET)))
+apk_info = {
+    sha256: ApkInfo(sha256, is_malicious)
+    for sha256, is_malicious in tqdm.tqdm(sha256_table.rows(), total=len(sha256_table), desc="Preparing APK analysis results")
+}
+
+# %%
+# Filter out apk not exits
+to_drop = [
+    sha256
+    for sha256, info in apk_info.items()
+    if info.path is None or not info.path.exists()
+]
+
+print(f"Drop {len(to_drop)} APKs since not exists, see \"to_drop\" for details")
+
+for sha256 in to_drop:
+    del apk_info[sha256]
+
+# %%
+# Filter out apk have no analysis result
+to_drop = [
+    sha256
+    for sha256, info in apk_info.items()
+    if any(v is None for v in info.analysis_result.values())
+]
 
 # %%
 import polars
@@ -36,50 +80,13 @@ sha256_list, isMalware = combined
 print(f"Load apk list from {PATH_TO_DATASET}")
 print(f"Num of apk: {len(sha256_list)}")
 
-# %%
-# 確認 Quark 分析結果都在
-# import data_preprocess.analysis_result as analysis_result
 
-# apk_infos = {
-#     sha256: {
-#         "analysis_result": (
-#             file
-#             if (file := analysis_result.get_file(sha256)).exists()
-#             else None
-#         )
-#     }
-#     for sha256 in sha256_list
-# }
-
-# analysis_report_missing = [
-#     sha256
-#     for sha256, info in apk_infos.items()
-#     if (file := info["analysis_result"]) is None
-# ]
-
-# if len(analysis_report_missing) != 0:
-#     print(
-#         f"{len(analysis_report_missing)} analysis reports are missing. Check variable `analysis_report_missing` for details."
-#     )
-
-# for sha256 in analysis_report_missing:
-#     del apk_infos[sha256]
 
 # %%
 from data_preprocess import analysis_result
 
 import polars as pl
 import json
-
-# %%
-# Build Model
-from model import (
-    RuleAdjustmentModel_NoTotalScore_Percentage,
-    RuleAdjustmentModel,
-)
-
-model = RuleAdjustmentModel_NoTotalScore_Percentage(NUM_OF_RULES)
-print(model)
 
 # %%
 # Load Model From File
@@ -115,7 +122,8 @@ rules = (
     .to_list()
 )
 
-dataset = dataset.ApkDataset(PATH_TO_DATASET, rules)
+# TODO - Test the new Dataset (Requires to use the filter here)
+dataset = dataset.OldApkDataset(PATH_TO_DATASET, rules)
 dataset.verify()
 
 print(f"APK distribution: {dataset.apk_info['is_malicious'].value_counts()}")
@@ -125,6 +133,16 @@ print(f"Num of rules: {len(dataset.rules)}")
 dataloader = torch.utils.data.DataLoader(
     dataset, batch_size=len(dataset), shuffle=True
 )
+
+# %%
+# Build Model
+from model import (
+    RuleAdjustmentModel_NoTotalScore_Percentage,
+    RuleAdjustmentModel,
+)
+
+model = RuleAdjustmentModel_NoTotalScore_Percentage(len(dataset.rules))
+print(model)
 
 # %%
 # Loss Function

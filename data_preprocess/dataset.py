@@ -6,6 +6,8 @@ from tqdm import tqdm
 from pathlib import Path
 import polars as pl
 import os
+from deprecated import deprecated
+from diskcache import Cache
 
 STAGE_WEIGHT_MAPPING = {
     0.0: (2**0) / (2**5),
@@ -19,16 +21,16 @@ STAGE_WEIGHT_MAPPING = {
 CACHE_SCHEMA = {"index": pl.Int64, "rule": pl.String, "weights": pl.Float32}
 
 
-def apk_have_analysis_results(dataset: "ApkDataset", sha256: str) -> bool:
+def apk_have_analysis_results(dataset: "OldApkDataset", sha256: str) -> bool:
     return analysis_result.get_file(sha256).exists()
 
 
-def apk_exists(dataset: "ApkDataset", sha256: str) -> bool:
+def apk_exists(dataset: "OldApkDataset", sha256: str) -> bool:
     return apk._get_path(sha256).exists()
 
 
 def apk_has_passing_stage_5_on_any_rule(
-    dataset: "ApkDataset", sha256: str
+    dataset: "OldApkDataset", sha256: str
 ) -> bool:
     indexed_result = dataset.load_cache(sha256)
     if indexed_result is None:
@@ -42,7 +44,7 @@ def apk_has_passing_stage_5_on_any_rule(
     ) and num_of_rules_passing_stage_5.item(0, "count") > 0
 
 
-def all_analysis_result_are_ready(dataset: "ApkDataset", sha256: str) -> bool:
+def all_analysis_result_are_ready(dataset: "OldApkDataset", sha256: str) -> bool:
     indexed_result = dataset.load_cache(sha256)
     if indexed_result is None:
         return True
@@ -50,7 +52,7 @@ def all_analysis_result_are_ready(dataset: "ApkDataset", sha256: str) -> bool:
 
 
 def drop_benign_apks_whose_analysis_result_is_same_with_malware(
-    dataset: "ApkDataset", sha256: str
+    dataset: "OldApkDataset", sha256: str
 ) -> bool:
     APK_TO_DROP = {
         "0002AAE56E7F80D54F6AA3EB7DA8BA9A28E58A3ECE3B15171FCF5EBEE30B95FE",
@@ -63,14 +65,87 @@ def drop_benign_apks_whose_analysis_result_is_same_with_malware(
 
     return sha256 not in APK_TO_DROP
 
-
 class ApkDataset(torch.utils.data.Dataset):
+    def __init__(
+        self, sha256s: Iterable[str], is_malicious: Iterable[int], rules: Iterable[str]
+    ):
+        self.apk_info = pl.DataFrame((sha256s, is_malicious), schema=apk_lib.APK_SCHEMA)
+
+        self.rules = (
+            pl.DataFrame(rules, schema=rule_lib.RULE_LIST_SCHEMA)
+            .unique(["rule"])
+            .with_row_index()
+        )
+
+        self._cache = Cache(self.base_folder)
+        self.__getitem__ = self._cache.memoize(self.__getitem__)
+
+    @property
+    def cache(self) -> Cache:
+        return self._cache
+
+    # @self.cache.memoize
+    def __getitem__(self, index) -> tuple[torch.Tensor, torch.Tensor]:
+        sha256 = self.apk_info.item(row=index, column="sha256")
+
+        apk_path = apk_lib.download(sha256)
+        rule_paths = [rule_lib.get(r) for r in self.rules.to_list()]
+
+        analysis_result = analysis_lib.analyze_rules(sha256, apk_path, rule_paths)
+        rule_weights = {
+            rule: STAGE_WEIGHT_MAPPING.get(float(stage), 0.0)
+            for rule, stage in analysis_result.items()
+        }
+
+        indexed_rule_weights = self.rules.with_columns(
+            pl.col("rule")
+            .map_elements(lambda r: rule_weights.get(r, 0.0), return_dtype=pl.Float32)
+            .alias("weights")
+        )
+
+        rule_weight_tensor = (
+            indexed_rule_weights.select("weights")
+            .transpose()
+            .to_torch(dtype=pl.Float32)
+        ).view(-1)
+
+        expected_score = torch.tensor(
+            self.apk_info.item(index, "is_malicious"), dtype=torch.float32
+        )
+
+        return rule_weight_tensor, expected_score
+
+    def __hash__(self) -> int:
+        hash_value = sum(hash(val) for val in self.apk_info["sha256"])
+        hash_value += sum(hash(val) for val in self.rules["rule"])
+        return hash_value
+
+    def __len__(self) -> int:
+        return len(self.apk_info)
+
+    @functools.cached_property
+    def base_folder(self) -> Path:
+        return self.__createIfNotExists(
+            Path(os.getenv("DATASET_FOLDER", "NOT_DEFINED"))
+            / f"{type(self).__name__}_{hash(self)}"
+        )
+
+    def prepare_data(self):
+        list(tqdm(self, desc="Preparing Dataset..."))
+
+    @staticmethod
+    def __createIfNotExists(folder: Path) -> Path:
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder
+
+@deprecated
+class OldApkDataset(torch.utils.data.Dataset):
 
     def __init__(
         self,
         data_index_files: list[Path],
         rules: Iterable[str],
-        apk_filter_funcs: list[Callable[["ApkDataset", str], bool]] = [
+        apk_filter_funcs: list[Callable[["OldApkDataset", str], bool]] = [
             apk_exists,
             apk_have_analysis_results,
             apk_has_passing_stage_5_on_any_rule,
@@ -178,7 +253,7 @@ class ApkDataset(torch.utils.data.Dataset):
         return self.working_folder() / "hash"
 
     def filter_apk(
-        self, filter_func: Callable[["ApkDataset", str], bool]
+        self, filter_func: Callable[["OldApkDataset", str], bool]
     ) -> None:
         partial_filter_func = functools.partial(filter_func, self)
         apk_to_drop = self.apk_info.filter(

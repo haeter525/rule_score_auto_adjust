@@ -1,7 +1,9 @@
+import hashlib
 from pathlib import Path
 import polars as pl
 import os
 import dotenv
+import json
 
 dotenv.load_dotenv()
 
@@ -35,3 +37,9 @@ def build_rule_folder(rule_names: list[str], folder: Path) -> Path:
             target_rule_path.unlink()
 
         target_rule_path.symlink_to(source_rule_path)
+
+def get_hash(rule_path: str) -> str:
+    with Path(rule_path).open("r") as content:
+        api = json.load(content)["api"]
+        api_str = json.dumps(api)
+        return hashlib.sha256(api_str.encode("utf-8")).hexdigest()

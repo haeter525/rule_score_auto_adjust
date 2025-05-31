@@ -1,0 +1,168 @@
+rule,rule_score,description
+1593.json,695.696533203125,Create and start an activity using an intent with a specific action and data URI.
+415.json,689.036865234375,Create and start a service using an intent.
+1173_2.json,626.0200805664062,Create an intent with a parsed URI.
+354_4.json,545.1013793945312,Retrieve a system service and check for active network connectivity.
+386_3.json,535.8218994140625,Retrieve data from a database cursor and move to the next record
+674.json,522.894287109375,Display a message as a toast notification.
+99.json,522.1025390625,Retrieve the column index and extract the string value from a database cursor.
+924_1.json,512.0061645507812,Retrieve text from an input field and convert it to a string.
+197_9.json,476.424072265625,Create a notification with an intent to launch an activity.
+605_1.json,471.9254150390625,Save data by editing SharedPreferences and committing the changes
+18_3.json,456.9253234863281,Query data from a content provider and retrieve a string value from the result cursor.
+184_8.json,433.79644775390625,Create and display a notification with specified details using Notification and NotificationManager.
+16_1.json,426.5375061035156,Query data using a URI and retrieve the index of a specific column in the cursor.
+215_8.json,416.22259521484375,Create an intent with a URI parsed from a string
+2966.json,408.7264099121094,Read data from a cursor by moving to the first record and retrieving a string value.
+293.json,404.5491027832031,Retrieve the package manager and get package information for the application.
+622_2.json,387.57733154296875,Create an intent and update notification details with context and message information.
+571.json,385.4070739746094,Save a string value in SharedPreferences and commit the changes.
+2524.json,384.34515380859375,Open an asset file and retrieve the height of a bitmap.
+728.json,382.2430725097656,Inflate a layout using the layout inflater from the context.
+440_3.json,379.6480407714844,Create an intent and start an activity using it.
+1048.json,378.1777648925781,Retrieve the latitude from location data and check if logging is enabled for a specific tag.
+579_1.json,369.349853515625,Check if external storage directory exists
+519.json,367.7142028808594,Create a new data container and store a serializable object in it.
+1227.json,357.73663330078125,Read lines from a BufferedReader and then close it
+144_4.json,352.7543640136719,Create a notification with a title and update its latest event information using context and pending intent.
+2569.json,351.65087890625,Retrieve location time and longitude data.
+1615.json,350.17388916015625,Create an intent with a string and start an activity using it.
+2910.json,347.11126708984375,Retrieve a string from a cursor and then close the cursor.
+2363.json,332.4174499511719,Load a drawable resource and set it as the image in an image display element.
+1404_1.json,327.80413818359375,Check if a file exists and delete it if present.
+145_5.json,317.8984375,Create and display a notification using Notification and NotificationManager.
+578_6.json,316.5408020019531,Access external storage directory and delete the specified file.
+1211.json,315.78045654296875,Open and close a buffered reader to read data efficiently.
+1590.json,311.4490051269531,"Create an intent with context and class, then add extra data to it."
+526.json,308.5174255371094,Save an integer value in SharedPreferences and commit the changes.
+2397.json,305.36865234375,Create a linear layout and set its alignment.
+2521.json,302.6811218261719,Check if logging is enabled and retrieve the current longitude from location data.
+1233.json,296.56890869140625,Create a ByteArrayOutputStream and convert its contents to a byte array.
+652.json,293.44354248046875,Create an intent with a specified action and URI and resolve the activity to handle it.
+608_1.json,293.0330505371094,Store a string value in SharedPreferences using an editor.
+2555.json,292.9436950683594,Retrieve the longitude and accuracy from a location object.
+1103.json,274.9183044433594,Create a text view and set its displayed text.
+68_7.json,273.62969970703125,Create an intent with a string and start a service using that intent.
+696_1.json,272.67431640625,Retrieve a string from SharedPreferences and commit the changes.
+943_1.json,271.992919921875,Query the content resolver and retrieve the number of items in a cursor.
+77_8.json,265.78179931640625,Query data using ContentResolver and obtain the number of results from the Cursor
+2538.json,259.5106201171875,Check if logging is enabled and parse a string into a URI.
+2885.json,259.0130920410156,Detect touch action and retrieve horizontal position from user input.
+90_3.json,258.5270690917969,Close the cursor after retrieving a string from it.
+605_2.json,257.322998046875,Create an intent and retrieve a broadcast pending intent for it.
+193_4.json,256.1168518066406,Start a new activity using an intent initialized with a string and a URI.
+409_3.json,255.63449096679688,Retrieve a system service and initialize an intent with it.
+1216.json,250.76882934570312,Parse a string into a URI and log the debug message.
+2898.json,248.62567138671875,Retrieve the X and Y coordinates from a touch event.
+2399.json,246.06573486328125,Create a linear layout with a context and set its orientation
+557_1.json,244.8588104248047,Get a system service and create a notification with it.
+464_2.json,244.4553985595703,Parse a string into a URI and set it as data in an Intent.
+531.json,244.2725372314453,Retrieve the system service and check if the network is connected.
+2504.json,243.55825805664062,Check if logging is enabled and initialize an intent with a specific action and URI.
+7_14.json,240.8474884033203,Create an intent using the application context and a URI to initiate an action.
+359.json,236.0443878173828,Get the package manager and create an intent to start a specific class in the application.
+1408.json,231.556396484375,Check if the file exists and open a stream to read its contents.
+375_7.json,222.4545135498047,Retrieve the package name and log a debug message.
+446_2.json,219.08372497558594,Parse a string into a URI and start an activity using the URI.
+146_10.json,218.84820556640625,Create a notification with an icon and message that triggers an activity using a pending intent
+9_3.json,218.56906127929688,Create an alert dialog and add a positive button with a click action
+463_1.json,218.448486328125,Parse a string into a URI and add it as extra data to an Intent.
+3410.json,217.6650390625,Decode an input stream into an image and retrieve its height.
+3057.json,211.66848754882812,Query the database and move the cursor to the first result.
+606_3.json,206.11627197265625,Create an intent with a specific class name and parse a string into a URI.
+1856.json,206.0164031982422,Set a view's child element and display a bitmap image in an ImageView.
+552.json,205.38214111328125,Store a long value and a string in SharedPreferences.
+34_8.json,203.8102569580078,Retrieve shared preferences and commit changes.
+2398.json,203.59921264648438,Create a linear layout and set its layout parameters.
+1121.json,202.8510284423828,Create a bitmap and initialize a paint object for drawing.
+557.json,195.8011016845703,Store a serializable object in a bundle and add it as extra data to an intent
+1622.json,194.2227325439453,Retrieve a secure setting value and log a warning message.
+1158.json,193.45919799804688,Create an intent with a specific type and then generate a chooser dialog to select an app for the intent.
+1202_1.json,190.91941833496094,Create a paint object and set its color for drawing.
+986_2.json,189.92208862304688,Store a string value and commit changes in SharedPreferences.
+2520.json,189.83627319335938,Check if logging is enabled and retrieve the current latitude.
+962_2.json,188.821533203125,Create an intent to start an activity and resolve the activity using the package manager.
+2678.json,188.21829223632812,Close the cursor after retrieving an integer value from it.
+424_5.json,187.9526824951172,Retrieve a system service and log a warning message.
+77_6.json,187.884033203125,Create an alert dialog using a builder initialized with context.
+464_1.json,186.2351531982422,Get the bitmap's width and draw the bitmap on a canvas.
+1910_1.json,184.02166748046875,Set class name and data URI in an Intent.
+10_13.json,182.79144287109375,Obtain the application context and parse a string into a URI.
+204_7.json,182.53848266601562,Create an intent and parse a string into a URI for handling data transfer.
+7_2.json,177.08058166503906,Create an alert dialog and set its message.
+2493.json,176.27357482910156,Check if logging is enabled and start an activity with an intent
+701_3.json,175.99099731445312,Retrieve a string value from SharedPreferences and initiate editing of preferences.
+1330_2.json,175.13430786132812,Query intent activities and create an intent with a specific action and URI
+1331.json,175.12893676757812,Create a new data bundle and attach it to an intent.
+30_12.json,174.21832275390625,Create an intent using the application context to start a specific activity.
+353_1.json,173.41656494140625,Retrieve shared preferences and commit changes
+2119.json,172.58676147460938,Save a boolean value and commit the changes in SharedPreferences.
+428_3.json,171.63934326171875,Create an intent with a string and add extra data to it.
+1564.json,170.36190795898438,Start a new service using an intent in the current context.
+2154.json,169.81576538085938,Configure WebView settings and load a URL into it.
+2280_1.json,162.86474609375,Set button text and assign a click listener to handle user interactions.
+606.json,162.08213806152344,Save an integer value in SharedPreferences using an editor.
+273.json,161.3478546142578,Retrieve data from a cursor by moving to the next record and getting a long value
+1964.json,159.181396484375,Set a WebChromeClient instance in a WebView to handle web-related events.
+1223.json,157.02101135253906,Set the paint color and style for drawing graphics.
+2549.json,155.1327667236328,Check if logging is enabled and schedule a delayed task with a handler.
+2433.json,153.17459106445312,Initialize a linear layout and set its alignment.
+246_1.json,152.91929626464844,Create a component with specific package and class names and set it as the target in an intent.
+559_2.json,151.18240356445312,Retrieve a system service and create a pending intent for an activity to facilitate notification handling.
+633.json,150.39523315429688,Access the content resolver and move the cursor to the first entry.
+1205.json,149.63560485839844,Create and display a toast message to inform the user.
+472_6.json,149.18699645996094,Create an intent with context and class and access default shared preferences.
+2886.json,147.31817626953125,Detects the action and vertical position from a touch event.
+1102.json,145.55581665039062,Create a text display and set its layout parameters for proper positioning.
+2552.json,145.51858520507812,Check if logging is enabled and retrieve a secure setting value.
+79_6.json,145.08920288085938,Create an alert dialog and set its cancelable property
+8_7.json,144.54779052734375,Create an alert dialog with a negative button.
+1806.json,144.2340545654297,Decode a resource into a bitmap and retrieve its width.
+254_13.json,143.33694458007812,Query intent activities and parse a string into a URI.
+15_2.json,142.99142456054688,Access shared preferences and initiate an edit session.
+573.json,141.3769989013672,Retrieve a string extra from an intent and log a debug message with it.
+1219_1.json,139.63006591796875,Initialize a buffered reader and close it after use.
+14_3.json,138.03407287597656,Set a message and positive button in an alert dialog.
+31_20.json,136.8639678955078,Cancel pending tasks and create a new intent with context and class information.
+550.json,136.65682983398438,Save a long value in SharedPreferences and commit the changes.
+210_10.json,135.464111328125,"Create an intent with context and class, then store a string in a bundle."
+2393.json,135.04672241210938,Create a linear layout and assign a click listener to a button.
+635.json,133.7437744140625,Retrieve a column index from a database cursor and store a string in SharedPreferences.
+414_1.json,133.51930236816406,Create and start an activity using an intent in the given context.
+22_3.json,130.1068878173828,Set the title and message in an alert dialog.
+15_3.json,129.88755798339844,Query data using ContentResolver and close the cursor afterward.
+296_9.json,129.4933624267578,Create an intent and set its class name for launching a specific component.
+1647.json,128.03330993652344,Create an intent and add flags to customize its behavior.
+555_2.json,127.64042663574219,Store serializable data in a bundle and start an activity with an intent.
+1212.json,126.0507583618164,Read a line from a buffered reader.
+15_12.json,125.26305389404297,Retrieve the package name and obtain package information using the package manager.
+20_11.json,125.09722900390625,Set the positive button and display the alert dialog.
+24_12.json,124.70989990234375,Start a new activity using an intent with a URI parsed from a string.
+136_5.json,123.76769256591797,Set the message and cancelability in an alert dialog builder.
+1323_2.json,123.74205780029297,Iterate through data and close the cursor afterward.
+21_22.json,123.50884246826172,Retrieve the application context and start a new activity using an intent.
+2445.json,123.13450622558594,Add a view to a layout and set its layout parameters.
+209_8.json,123.1162109375,Create an intent and add serializable data to a bundle for passing information between components.
+1645_1.json,121.86875915527344,Start an activity with an intent that includes specific flags.
+25_11.json,121.64917755126953,Set the title and display the alert dialog.
+265_5.json,120.60055541992188,Access the asset manager and open a file from assets.
+454.json,118.43733215332031,Parse a string into a URI and access the content resolver for data operations.
+23_1.json,117.70230865478516,Set the title and negative button in an alert dialog.
+65.json,117.6134262084961,Retrieve a string resource and set it as the text in a text display element.
+356_3.json,117.17229461669922,Show a progress dialog and set it as cancelable
+11_3.json,116.60796356201172,Create and display an alert dialog using the dialog builder.
+1577.json,116.5530776977539,Retrieve default shared preferences and create an editor for storing preferences.
+430_1.json,116.36516571044922,Create and configure an intent with data and type information.
+530_6.json,116.12936401367188,Create shared preferences and initialize an intent for data storage.
+1566.json,115.80875396728516,Create an intent and add flags to specify its behavior.
+525.json,115.04620361328125,Retrieve the package manager and parse a string into a URI.
+117_4.json,114.88359069824219,Start an activity with specific flags using an intent.
+1116_2.json,113.17620849609375,Create an intent and set its data using a URI.
+24_17.json,111.69126892089844,Retrieve the application context and access the content resolver to manage app data.
+8_21.json,110.5856704711914,Retrieve the application context and determine the network type.
+186_11.json,110.1334228515625,Retrieve the package manager and check for active network connectivity.
+1245.json,110.08768463134766,Retrieve the package manager and create an intent with a specific action and data URI.
+2527_1.json,108.9933853149414,Check if logging is enabled and verify if music is playing.
+2525_2.json,108.41411590576172,Check if logging is enabled and retrieve the current audio mode
+10_1.json,108.03214263916016,Create an alert dialog and set its title.
+212_8.json,107.76797485351562,Create and display a progress dialog to inform users of ongoing operations.

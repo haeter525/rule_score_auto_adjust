@@ -14,6 +14,7 @@ cache = FanoutCache(f"{os.getenv("CACHE_FOLDER")}/apk_download_cache")
 class APK_DOWNLOAD_STATUS(enum.Enum):
     SUCCESS: int = 0
     FAILED: int = 1
+    NEED_DOWNLOAD: int = 2
 
 
 APK_SCHEMA = {
@@ -81,14 +82,14 @@ def __download(
         raise Exception(f"Failed to download apk {sha256}: {str(e)}")
 
 
-def download(sha256: str, use_cache: bool = True) -> Path | None:
+def download(sha256: str, use_cache: bool = True, dry_run: bool = False) -> Path | None:
     if sha256 not in cache or not use_cache:
         apk_path = _get_path(sha256)
         if apk_path.exists():
             # Migrating: Check if apk exists in the apk folder
             # print(f"Find {sha256} exists. Add it into cache")
             cache.set(sha256, APK_DOWNLOAD_STATUS.SUCCESS)
-        else:
+        elif not dry_run:
             # Download APK
             try:
                 # print(f"Downloading {sha256}")
@@ -110,4 +111,6 @@ def download(sha256: str, use_cache: bool = True) -> Path | None:
         case APK_DOWNLOAD_STATUS.SUCCESS:
             return _get_path(sha256)
         case APK_DOWNLOAD_STATUS.FAILED:
+            return None
+        case APK_DOWNLOAD_STATUS.NEED_DOWNLOAD:
             return None

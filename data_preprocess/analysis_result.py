@@ -20,6 +20,7 @@ cache = FanoutCache(f"{os.getenv("CACHE_FOLDER")}/analysis_result_status")
 class ANALYSIS_STATUS(enum.Enum):
     SUCCESS: int = 0
     FAILED: int = 1
+    NEED_RUN: int = 2
 
 
 def get_folder() -> Path:
@@ -102,9 +103,10 @@ def analyze_rules(
     apk_path: Path,
     rule_paths: list[Path],
     use_cache: bool = True,
+    dry_run: bool = False,
 ) -> dict[str, int]:
     results = {
-        rule.name: analyze(sha256, rule, apk_path, use_cache) for rule in rule_paths
+        rule.name: analyze(sha256, rule, apk_path, use_cache, dry_run) for rule in rule_paths
     }
     return results
 
@@ -114,6 +116,7 @@ def analyze(
     rule_path: Path,
     apk_path: Path,
     use_cache: bool = True,
+    dry_run: bool = False
 ) -> int:
     assert apk_path.exists(), f"apk_path {apk_path} does not exist"
     assert rule_path.exists(), f"rule_path {rule_path} does not exist"
@@ -131,7 +134,7 @@ def analyze(
                 rule_name,
                 ANALYSIS_STATUS.SUCCESS if stage >= 0 else ANALYSIS_STATUS.FAILED,
             )
-        else:
+        elif not dry_run:
             # Run Quark Analysis
             # print(f"Run Quark Analysis for {sha256} and {rule_name}")
             try:
@@ -148,11 +151,13 @@ def analyze(
         # print(f"Analysis result for {sha256} and {rule_name} is in cache")
         pass
 
-    match subcache[rule_name]:
+    match subcache.get(rule_name, ANALYSIS_STATUS.NEED_RUN):
         case ANALYSIS_STATUS.SUCCESS:
             return load_as_dict(sha256)[rule_name]
         case ANALYSIS_STATUS.FAILED:
             return -1
+        case ANALYSIS_STATUS.NEED_RUN:
+            return -2
 
 
 def _append_result(sha256: str, results: dict[str, int]) -> Path:

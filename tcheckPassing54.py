@@ -50,7 +50,7 @@ def main(apk_name, max_workers=None, skip_unfinished=False):
         with ProcessPoolExecutor(
             max_workers=max_workers or os.cpu_count(),
             initializer=init_worker,
-            initargs=(apk.get(apk_name),)
+            initargs=(apk._get_path(apk_name),)
         ) as executor:
             futures = {executor.submit(expensive_worker, f): f for f in rules_to_process}
 
@@ -98,7 +98,7 @@ if __name__ == "__main__":
     apk_names = [
         apk_name
         for apk_name in apk_names
-        if (apk.get(apk_name)).exists()
+        if (apk._get_path(apk_name)).exists()
     ]
 
     for apk_name in tqdm(apk_names, desc="APKs"):

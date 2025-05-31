@@ -17,10 +17,10 @@ def analyze_apk(sha256, apk_path, rules):
 
 
 cluster_setting = [
-    {"n_workers": 8, "threads_per_worker": 2, "memory_limit": "2Gib"},
-    {"n_workers": 4, "threads_per_worker": 2, "memory_limit": "5Gib"},
-    {"n_workers": 2, "threads_per_worker": 4, "memory_limit": "10Gib"},
-    {"n_workers": 1, "threads_per_worker": 1, "memory_limit": "20Gib"},
+    # {"n_workers": 8, "threads_per_worker": 1, "memory_limit": "10Gib"},
+    # {"n_workers": 4, "threads_per_worker": 1, "memory_limit": "10Gib"},
+    # {"n_workers": 2, "threads_per_worker": 2, "memory_limit": "10Gib"},
+    {"n_workers": 1, "threads_per_worker": 2, "memory_limit": "20Gib"},
 ]
 
 
@@ -29,7 +29,7 @@ def main(dataset: str, n_workers, threads_per_worker, memory_limit):
         n_workers=n_workers,
         threads_per_worker=threads_per_worker,
         memory_limit=memory_limit,
-        dashboard_address=":8080",
+        dashboard_address="192.168.0.143:8080",
     )
     client = Client(cluster)
     dask.config.set({"distributed.workers.memory.terminate": 0.9})
@@ -96,7 +96,4 @@ if __name__ == "__main__":
     for setting in cluster_setting:
         print(f"{setting=}")
         main("data/lists/benignAPKs_top_0.4_vt_scan_date.csv", **setting)
-        
-        
-        
         
