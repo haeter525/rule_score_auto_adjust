@@ -29,13 +29,13 @@ def main(sha256s: list[str], rules: list[Path]):
     sha256s_pl = sha256s_pl.assign(size=sha256s_pl["sha256"].apply(lambda x: apk_lib._get_path(x).stat().st_size))
     sha256s_pl = sha256s_pl.sort_values("size")
 
-    dataset = ray.data.from_pandas(sha256s_pl)
+    dataset = ray.data.from_pandas(sha256s_pl, override_num_blocks=len(sha256s_pl))
     dataset = dataset.map(download_apk)
 
     dataset = dataset.filter(lambda row: row["apk_path"] is not None)
     
     partial_analyze_apk = functools.partial(analyze_apk, rules=rules)
-    dataset = dataset.map(partial_analyze_apk, num_cpus=4)
+    dataset = dataset.map(partial_analyze_apk)
 
     success_task_results = []
     for result in dataset.iter_rows():
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
 
     sha256s = apk_lib.load_list(
-        "/mnt/storage/data/rule_to_release/0611/droidkungfu.csv"
+        "/mnt/storage/data/rule_to_release/0611/benigns.csv"
     )["sha256"].to_list()
 
     rules = [
