@@ -5,7 +5,7 @@ import data_preprocess.apk as apk_lib
 
 DATASET_PATHS = ["data/lists/maliciousAPKs_top_0.4_vt_scan_date.csv"]
 
-dataset = pl.concat((apk_lib.load_list(ds) for ds in DATASET_PATHS)).unique(
+dataset = pl.concat((apk_lib.read_csv(ds) for ds in DATASET_PATHS)).unique(
     "sha256", keep="any"
 )
 print(dataset.schema)

@@ -27,19 +27,16 @@ def get_folder() -> Path:
     return Path(os.getenv("ANALYSIS_RESULT_FOLDER", "NOT_DEFINED"))
 
 
-@deprecated("Use get_file instead")
+@deprecated("Use analyze instead")
 def get_file_old(sha256: str) -> Path:
     return get_folder() / f"{sha256}.apk_progress.json"
 
-
-def get_file_new(sha256: str) -> Path:
+@deprecated("Use analyze instead")
+def get_file(sha256: str) -> Path:
     return get_folder() / f"{sha256}.csv"
 
 
-get_file = get_file_new
-
-
-@deprecated("Use load instead")
+@deprecated("Use analyze instead")
 def load_old(sha256: str) -> tuple[str, int]:
     def parse_item(item: tuple[str, int] | str) -> tuple[str, int]:
         return (item, -1) if isinstance(item, str) else item
@@ -57,8 +54,37 @@ def load_old(sha256: str) -> tuple[str, int]:
         return []
 
 
-def load_as_dataframe(sha256: str) -> pl.DataFrame:
-    file = get_file_new(sha256=sha256)
+@functools.lru_cache(maxsize=512)
+def __load_as_dict(sha256: str) -> dict[str, int]:
+    return {
+        rule: stage
+        for rule, stage in __load_as_dataframe(sha256=sha256).rows()
+    }
+
+
+@deprecated("Use analyze instead")
+def load_new(sha256: str) -> list[str, int]:
+    table = __load_as_dataframe(sha256=sha256)
+    return [r for r in table.rows()]
+
+
+@deprecated("Use analyze instead")
+def load(sha256: str) -> list[str, int]:
+    combined = [tuple(item) for item in load_new(sha256=sha256)]
+    return list(set(combined))
+
+
+@deprecated("Use analyze instead")
+def save(sha256: str, analysis_result: list[str, int]) -> Path:
+    file = get_file(sha256=sha256)
+    pl.DataFrame(analysis_result, schema=SCHEMA, orient="row").write_csv(
+        file, include_header=True
+    )
+    return file
+
+
+def __load_as_dataframe(sha256: str) -> pl.DataFrame:
+    file = get_file(sha256=sha256)
     if not file.exists():
         return pl.DataFrame()
 
@@ -66,33 +92,18 @@ def load_as_dataframe(sha256: str) -> pl.DataFrame:
     return table
 
 
-@functools.lru_cache(maxsize=512)
-def load_as_dict(sha256: str) -> dict[str, int]:
-    return {
-        rule: stage for rule, stage in load_as_dataframe(sha256=sha256).rows()
-    }
-
-
-def save_as_dict(sha256: str, analysis_result: dict[str, int]):
+def __save_as_dict(sha256: str, analysis_result: dict[str, int]):
     return save(sha256, list(analysis_result.items()))
 
 
-def load_new(sha256: str) -> list[str, int]:
-    table = load_as_dataframe(sha256=sha256)
-    return [r for r in table.rows()]
+def _append_result(sha256: str, results: dict[str, int]) -> Path:
+    existing_results = __load_as_dict(sha256)
 
+    for rule, stage in results.items():
+        if stage > existing_results.get(rule, -1):
+            existing_results[rule] = stage
 
-def load(sha256: str) -> list[str, int]:
-    combined = [tuple(item) for item in load_new(sha256=sha256)]
-    return list(set(combined))
-
-
-def save(sha256: str, analysis_result: list[str, int]) -> Path:
-    file = get_file_new(sha256=sha256)
-    pl.DataFrame(analysis_result, schema=SCHEMA, orient="row").write_csv(
-        file, include_header=True
-    )
-    return file
+    return __save_as_dict(sha256, existing_results)
 
 
 @functools.lru_cache(maxsize=6)
@@ -108,7 +119,8 @@ def analyze_rules(
     dry_run: bool = False,
 ) -> dict[str, int]:
     results = {
-        rule.name: analyze(sha256, rule, apk_path, use_cache, dry_run) for rule in rule_paths
+        rule.name: analyze(sha256, rule, apk_path, use_cache, dry_run)
+        for rule in rule_paths
     }
     return results
 
@@ -118,7 +130,7 @@ def analyze(
     rule_path: Path,
     apk_path: Path,
     use_cache: bool = True,
-    dry_run: bool = False
+    dry_run: bool = False,
 ) -> int:
     assert apk_path.exists(), f"apk_path {apk_path} does not exist"
     assert rule_path.exists(), f"rule_path {rule_path} does not exist"
@@ -127,14 +139,18 @@ def analyze(
 
     rule_name = rule_path.name
     if (not use_cache) or rule_name not in subcache:
-        existing_result = load_as_dict(sha256)
+        existing_result = __load_as_dict(sha256)
         if rule_name in existing_result:
             # Migrating: Check if result exists in the analysis_result file
             # print(f"Find analysis result for {sha256} and {rule_name} in analysis_result file")
             stage = existing_result[rule_name]
             subcache.set(
                 rule_name,
-                ANALYSIS_STATUS.SUCCESS if stage >= 0 else ANALYSIS_STATUS.FAILED,
+                (
+                    ANALYSIS_STATUS.SUCCESS
+                    if stage >= 0
+                    else ANALYSIS_STATUS.FAILED
+                ),
             )
         elif not dry_run:
             # Run Quark Analysis
@@ -155,18 +171,8 @@ def analyze(
 
     match subcache.get(rule_name, ANALYSIS_STATUS.NEED_RUN):
         case ANALYSIS_STATUS.SUCCESS:
-            return load_as_dict(sha256)[rule_name]
+            return __load_as_dict(sha256)[rule_name]
         case ANALYSIS_STATUS.FAILED:
             return -1
         case ANALYSIS_STATUS.NEED_RUN:
             return -2
-
-
-def _append_result(sha256: str, results: dict[str, int]) -> Path:
-    existing_results = load_as_dict(sha256)
-
-    for rule, stage in results.items():
-        if stage > existing_results.get(rule, -1):
-            existing_results[rule] = stage
-
-    return save_as_dict(sha256, existing_results)

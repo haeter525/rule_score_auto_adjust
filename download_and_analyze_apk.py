@@ -71,7 +71,7 @@ if __name__ == "__main__":
     ]
 
     sha256s = pl.concat(
-        [apk_lib.load_list(dataset) for dataset in PATH_TO_DATASET]
+        [apk_lib.read_csv(dataset) for dataset in PATH_TO_DATASET]
     )["sha256"].to_list()
 
     rules = [

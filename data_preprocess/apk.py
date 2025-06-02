@@ -23,7 +23,7 @@ APK_SCHEMA = {
 }
 
 
-def load_list(apk_list: str) -> pl.DataFrame:
+def read_csv(apk_list: str) -> pl.DataFrame:
     return pl.read_csv(
         apk_list,
         schema_overrides=APK_SCHEMA,
@@ -32,7 +32,7 @@ def load_list(apk_list: str) -> pl.DataFrame:
     )
 
 
-def save_list(apk_list: pl.DataFrame, output_path: str) -> Path:
+def write_csv(apk_list: pl.DataFrame, output_path: str) -> Path:
     apk_list.write_csv(output_path, has_header=True)
     return Path(output_path).resolve()
 

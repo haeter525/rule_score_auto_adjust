@@ -48,7 +48,7 @@ class ApkInfo:
         else:
             self.analysis_result = {}
 
-sha256_table = pl.concat(list(map(apk_lib.load_list, PATH_TO_DATASET)))
+sha256_table = pl.concat(list(map(apk_lib.read_csv, PATH_TO_DATASET)))
 original_apk_info_list = [
     ApkInfo(sha256, is_malicious)
     for sha256, is_malicious in tqdm.tqdm(
@@ -90,7 +90,7 @@ apk_info_list = show_and_filter(apk_info_list, apk_no_analysis_result)
 apk_info_list = list(apk_info_list)
 
 # %%
-print("Filter out api didn't pass 5 stage on any rule.")
+print("Filter out apk didn't pass 5 stage on any rule.")
 apk_no_passing_5_stage = lambda info: not any(
     v >= 5 for v in info.analysis_result.values()
 )
@@ -135,7 +135,7 @@ assert len(missing_malware) == 0 , f"Some malware is missing, check \"missing_ma
 # %%
 # 確認所有內建樣本都還存在（apk-sample.csv）
 
-builtin_sample = apk_lib.load_list("/mnt/storage/rule_score_auto_adjust/data/lists/family/apk-sample.csv")["sha256"].to_list()
+builtin_sample = apk_lib.read_csv("/mnt/storage/rule_score_auto_adjust/data/lists/family/apk-sample.csv")["sha256"].to_list()
 
 missing_apks = [
     sha256 for sha256 in builtin_sample if sha256 not in all_sha256s
@@ -520,8 +520,8 @@ for rule_name, score in apk_prediction.iter_rows():
     rule_path = path_to_quark_rules / rule_name
     assert rule_path.exists(), f"{rule_path} doesn't exists."
     
-    # round_score = round(score, 2)
-    round_score = score
+    round_score = round(score, 2)
+    # round_score = score
     print(f"更新 {rule_path} 規則分數為 {round_score}")
     
     with open(rule_path, "r") as f:
