@@ -68,7 +68,9 @@ def load_as_dataframe(sha256: str) -> pl.DataFrame:
 
 @functools.lru_cache(maxsize=512)
 def load_as_dict(sha256: str) -> dict[str, int]:
-    return {rule: stage for rule, stage in load_as_dataframe(sha256=sha256).rows()}
+    return {
+        rule: stage for rule, stage in load_as_dataframe(sha256=sha256).rows()
+    }
 
 
 def save_as_dict(sha256: str, analysis_result: dict[str, int]):

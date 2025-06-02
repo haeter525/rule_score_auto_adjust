@@ -136,7 +136,7 @@ import polars as pl
 import data_preprocess.rule as rule_lib
 
 PATH_TO_QUARK_RULES = Path("/mnt/storage/quark-rules/rules")
-rule_paths = [str(p.) for p in PATH_TO_QUARK_RULES.glob("*.json")]
+rule_paths = [str(p.resolve()) for p in PATH_TO_QUARK_RULES.glob("*.json")]
 default_rules = pl.DataFrame(rule_paths, schema={"rule_path": pl.String()})
 
 default_rules = default_rules.with_columns(

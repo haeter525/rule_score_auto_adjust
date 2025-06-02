@@ -31,7 +31,7 @@ class ScoringModel(nn.Module):
         total_score = torch.sum(self.pos_rule_scores(self.raw_rule_scores))
         normalized_score = score / total_score
         return normalized_score
-    
+
     def get_rule_scores(self):
         return self.pos_rule_scores(self.raw_rule_scores)
 
@@ -65,7 +65,8 @@ class RuleAdjustmentModel(nn.Module):
 
     def get_rule_scores(self):
         return self.rule_score
-    
+
+
 class RuleAdjustmentModel_NoTotalScore(nn.Module):
     def __init__(self, num_of_rules: int) -> None:
         """Initialize the Rule Adjustment Model."""
@@ -75,7 +76,7 @@ class RuleAdjustmentModel_NoTotalScore(nn.Module):
         self.rule_score = torch.nn.Parameter(
             torch.randn((num_of_rules,), dtype=torch.float32)
         )
-        
+
         # Normalize the result to be between 0 and 1
         self.normalize = torch.nn.Sigmoid()
 
@@ -92,8 +93,8 @@ class RuleAdjustmentModel_NoTotalScore(nn.Module):
 
     def get_rule_scores(self):
         return self.rule_score
-    
-    
+
+
 class RuleAdjustmentModel_NoTotalScore_Percentage(nn.Module):
     def __init__(self, num_of_rules: int) -> None:
         """Initialize the Rule Adjustment Model."""
@@ -103,12 +104,13 @@ class RuleAdjustmentModel_NoTotalScore_Percentage(nn.Module):
         self.rule_score = torch.nn.Parameter(
             torch.randn((num_of_rules,), dtype=torch.float32)
         )
-        
+
         # Normalize the result to be between 0 and 1
         self.normalize = torch.nn.Sigmoid()
 
-    def forward(self, passing_stages: torch.Tensor) -> torch.Tensor:
-        """The main logic of the model."""
+    def calculate_apk_scores(
+        self, passing_stages: torch.Tensor
+    ) -> torch.Tensor:
         # score_weights = passing_stages.type(torch.float32).apply_(
         #     self.__convert_to_weights
         # )
@@ -116,6 +118,11 @@ class RuleAdjustmentModel_NoTotalScore_Percentage(nn.Module):
 
         apk_scores = torch.matmul(score_weights, self.rule_score)
         apk_scores_percent = apk_scores / len(self.rule_score)
+        return apk_scores_percent
+
+    def forward(self, passing_stages: torch.Tensor) -> torch.Tensor:
+        """The main logic of the model."""
+        apk_scores_percent = self.calculate_apk_scores(passing_stages)
         classification = self.normalize(apk_scores_percent)
         return classification
 

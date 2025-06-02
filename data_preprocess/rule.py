@@ -4,6 +4,7 @@ import polars as pl
 import os
 import dotenv
 import json
+from collections import defaultdict
 
 dotenv.load_dotenv()
 
@@ -38,8 +39,36 @@ def build_rule_folder(rule_names: list[str], folder: Path) -> Path:
 
         target_rule_path.symlink_to(source_rule_path)
 
+
 def get_hash(rule_path: str) -> str:
     with Path(rule_path).open("r") as content:
         api = json.load(content)["api"]
         api_str = json.dumps(api)
         return hashlib.sha256(api_str.encode("utf-8")).hexdigest()
+
+
+if __name__ == "__main__":
+    rules = get_folder().glob("*.json")
+
+    rule_hash = defaultdict(list)
+    rule_to_drop = []
+    for rule in rules:
+        hash = get_hash(rule)
+        if rule.name not in ["00195.json", "00007.json"] and hash in rule_hash:
+            if rule.name.startswith("00"):
+                dup_rule = rule_hash[hash].pop()
+                rule_hash[hash].append(rule)
+                rule = dup_rule
+
+            print(f"Found duplicate rule: {rule}, with {rule_hash[hash]}")
+            rule_to_drop.append(rule)
+        else:
+            rule_hash[hash].append(rule)
+
+    print(f"Num of rules: {len(rule_hash)}")
+
+    # Move all rules in rule_to_drop into a new folder
+    drop_folder = get_folder() / "drop"
+    drop_folder.mkdir(parents=True, exist_ok=True)
+    for rule in rule_to_drop:
+        rule.replace(drop_folder / rule.name)

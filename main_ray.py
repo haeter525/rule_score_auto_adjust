@@ -4,7 +4,6 @@ import data_preprocess.rule as rule_lib
 import data_preprocess.analysis_result as analysis_result_lib
 import ray
 import ray.data
-import ray.core
 import resource
 from pathlib import Path
 import pandas as pd
@@ -52,9 +51,11 @@ def main(sha256s: list[str], rules: list[Path]):
         failed_out_file, include_header=True
     )
 
-    print(
-        f"and {len(failed_sha256s)} failed due to out of memory, please refer to {failed_out_file}"
-    )
+    if failed_sha256s:
+        print(
+            f"and {len(failed_sha256s)} failed due to out of memory, "
+            f"please refer to {failed_out_file}"
+        )
 
     ray.shutdown()
 
@@ -63,8 +64,14 @@ if __name__ == "__main__":
     mem_bytes = 22 * 1024 * 1024 * 1024  # 20 GB
     resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
 
-    sha256s = apk_lib.load_list(
-        "/mnt/storage/data/rule_to_release/0611/benigns.csv"
+    PATH_TO_DATASET = [
+        # "data/lists/family/droidkungfu.csv",
+        "/mnt/storage/rule_score_auto_adjust/data/lists/family/apk-sample.csv",
+        # "data/lists/benignAPKs_top_0.4_vt_scan_date.csv",
+    ]
+
+    sha256s = pl.concat(
+        [apk_lib.load_list(dataset) for dataset in PATH_TO_DATASET]
     )["sha256"].to_list()
 
     rules = [

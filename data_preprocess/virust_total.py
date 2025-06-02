@@ -38,9 +38,11 @@ class Status(enum.Enum):
     FAILED = "failed"
     NO_REPORT = "no_report"
 
+
 dotenv.load_dotenv()
 cache = diskcache.FanoutCache(f"{os.getenv('CACHE_FOLDER')}/vt_report")
 lock = RatedSemaphore(4, 60)
+
 
 @cache.memoize()
 def get_virus_total_report(sha256: str) -> tuple[dict[str, Any], Status]:
