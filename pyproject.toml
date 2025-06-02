@@ -1,0 +1,25 @@
+[project]
+name = "rule-score-auto-adjust"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "diskcache>=5.6.3",
+    "dotenv>=0.9.9",
+    "polars>=1.30.0",
+    "quark-engine",
+    "ray[data,default]>=2.46.0",
+]
+
+[tool.uv]
+environments = ["sys_platform == 'linux'"]
+
+[tool.uv.sources]
+quark-engine = { path = "../quark-engine" }
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "ipykernel>=6.29.5",
+]
