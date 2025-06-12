@@ -43,25 +43,32 @@ class RuleAdjustmentModel(nn.Module):
 
         # Initialize the rule scores with random values to allow for learning
         self.rule_score = torch.nn.Parameter(
-            torch.randn((num_of_rules, 1), dtype=torch.float32)
+            torch.randn((num_of_rules,), dtype=torch.float32)
         )
+        self.normalize = torch.nn.Sigmoid()
 
     def __convert_to_weights(self, stage: torch.Tensor) -> torch.Tensor:
         """Convert the stage to a weight for the rule score."""
         numerator = torch.scalar_tensor(2, dtype=torch.float32) ** stage
         denominator = torch.scalar_tensor(2**5, dtype=torch.float32)
         return numerator / denominator
-
-    def forward(self, passing_stages: torch.Tensor) -> torch.Tensor:
-        """The main logic of the model."""
+    
+    def calculate_apk_scores(
+        self, passing_stages: torch.Tensor
+    ) -> torch.Tensor:
         # score_weights = passing_stages.type(torch.float32).apply_(
         #     self.__convert_to_weights
         # )
         score_weights = passing_stages
 
         apk_scores = torch.matmul(score_weights, self.rule_score)
+        return apk_scores 
+
+    def forward(self, passing_stages: torch.Tensor) -> torch.Tensor:
+        """The main logic of the model."""
+        apk_scores = self.calculate_apk_scores(passing_stages)
         total_score = self.rule_score.sum()
-        return apk_scores / total_score
+        return self.normalize((apk_scores / total_score) - 0.5)
 
     def get_rule_scores(self):
         return self.rule_score

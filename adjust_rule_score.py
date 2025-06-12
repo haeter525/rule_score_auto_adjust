@@ -173,7 +173,8 @@ from model import (
     RuleAdjustmentModel,
 )
 
-model = RuleAdjustmentModel_NoTotalScore_Percentage(len(dataset.rules))
+model = RuleAdjustmentModel(len(dataset.rules))
+# model = RuleAdjustmentModel_NoTotalScore_Percentage(len(dataset.rules))
 print(model)
 # %%
 # Load Model From File
@@ -329,11 +330,11 @@ def run_epochs(learning_rate, epochs=100):
 
 # %%
 accuracy = 0
-for i in range(50):
+for i in range(2):
     if accuracy == 1.0:
         break
     
-    lrs = [100] * 1
+    lrs = [10] * 1
     best_model_param_path = None
     # lrs = [1]
     for lr in lrs:

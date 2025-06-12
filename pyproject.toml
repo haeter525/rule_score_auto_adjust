@@ -10,6 +10,9 @@ dependencies = [
     "polars>=1.30.0",
     "quark-engine",
     "ray[data,default]>=2.46.0",
+    "scikit-learn>=1.6.1",
+    "tensorboard>=2.19.0",
+    "torch>=2.7.0",
 ]
 
 [tool.uv]

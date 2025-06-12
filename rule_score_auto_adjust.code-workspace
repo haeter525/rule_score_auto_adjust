@@ -4,14 +4,15 @@
 			"path": "."
 		},
 		{
-			"path": "../quark-engine"
-		},
-		{
-			"path": "../generate_rules"
-		},
-		{
 			"path": "../data"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"git.ignoreLimitWarning": true,
+		"workbench.colorCustomizations": {
+			"activityBar.background": "#2C2E28",
+			"titleBar.activeBackground": "#3D4138",
+			"titleBar.activeForeground": "#FAFBFA"
+		}
+	}
 }
