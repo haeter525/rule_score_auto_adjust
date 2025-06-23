@@ -65,20 +65,26 @@ if __name__ == "__main__":
     resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
 
     PATH_TO_DATASET = [
-        # "data/lists/family/droidkungfu.csv",
-        "/mnt/storage/rule_score_auto_adjust/data/lists/family/apk-sample.csv",
-        # "data/lists/benignAPKs_top_0.4_vt_scan_date.csv",
+        "data/lists/family/droidkungfu.csv",
+        "data/lists/family/basebridge.csv",
+        "data/lists/benignAPKs_top_0.4_vt_scan_date.csv",
     ]
 
     sha256s = pl.concat(
         [apk_lib.read_csv(dataset) for dataset in PATH_TO_DATASET]
     )["sha256"].to_list()
 
-    rules = [
-        rule_lib.get(rule_name)
-        for rule_name in rule_lib.load_list(
-            "/mnt/storage/data/rule_to_release/0611/all_rules.csv"
-        )["rule"].to_list()
+    PATH_TO_RULE_LIST = [
+        "/mnt/storage/data/rule_to_release/default_rules.csv",
+        "/mnt/storage/data/rule_to_release/0627/unselected_rules.csv"
     ]
+    rules = pl.concat(
+        [rule_lib.load_list(rule_list) for rule_list in PATH_TO_RULE_LIST],
+        how="vertical"
+    )["rule"].to_list()
+    
+    rules = [Path(rule_lib.get(rule)) for rule in rules]
+    assert all(rule.exists() for rule in rules)
 
     main(sha256s, rules)
+
