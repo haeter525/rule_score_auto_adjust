@@ -10,7 +10,7 @@
             "options": {
                 "cwd": "/Users/shengfeng/codespace/rule_score_auto_adjust"
             },
-            "dependsOn":[
+            "dependsOn": [
                 "Reset Quark Rules"
             ]
         },
@@ -21,6 +21,26 @@
             "options": {
                 "cwd": "/Users/shengfeng/codespace/quark-rules"
             }
+        },
+        {
+            "label": "Mlflow Server",
+            "type": "shell",
+            "command": "uv",
+            "args": [
+                "run",
+                "mlflow",
+                "server",
+                "--backend-store-uri",
+                "file:///mnt/storage/data/mlflow/mlruns",
+                "--serve-artifacts",
+                "--artifacts-destination",
+                "file:///mnt/storage/data/mlflow/mlartifacts"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder:rule_score_auto_adjust}"
+            },
+            "problemMatcher": [],
+            "isBackground": true
         }
     ]
 }
