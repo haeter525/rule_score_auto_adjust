@@ -63,16 +63,21 @@ original_apk_info_list = [
 from typing import Generator, Iterable, Callable
 
 
-def show_and_filter(apk_info_list: Iterable[ApkInfo], filter_func: Callable[[ApkInfo], bool]) -> Generator[ApkInfo, None, None]:
+def show_and_filter(
+    apk_info_list: Iterable[ApkInfo], filter_func: Callable[[ApkInfo], bool]
+) -> Generator[ApkInfo, None, None]:
     to_drop = []
-    
+
     for apk_info in apk_info_list:
         if filter_func(apk_info):
-            to_drop.append(apk_info.sha256)
+            to_drop.append(apk_info)
         else:
             yield apk_info
-    
-    print(f'Drop {len(to_drop)} APKs, set checkpoint in this function and see "to_drop" for details')
+
+    print(
+        f'Drop {len(to_drop)} APKs, set checkpoint in this function and see "to_drop" for details'
+    )
+
 
 apk_info_list = original_apk_info_list
 # %%

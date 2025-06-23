@@ -206,3 +206,5 @@ model_logs
 *.csv
 cache.db*
 runs
+
+classification/*
