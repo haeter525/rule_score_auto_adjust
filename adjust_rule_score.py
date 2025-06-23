@@ -2,6 +2,7 @@
 import datetime
 from pathlib import Path
 import dotenv
+import mlflow.pytorch
 
 dotenv.load_dotenv()
 
@@ -213,17 +214,55 @@ loss_value = loss_fn(y_pred, y_exp)
 print("Loss:", loss_value.item())
 best_model_param_path = None
 
+# %%
+# Record environment
+# TODO - Record dataset to mlflow
+import mlflow
+from mlflow.pytorch import log_model
+import sys
+import click
+from pathlib import Path
+
+mlflow.set_tracking_uri(uri="http://localhost:5000")
+
+families = {Path(p).stem for p in PATH_TO_DATASET}
+
+target_family = click.prompt(
+    "Input the family name",
+    default=next(
+        iter(families),
+        "unknown_family",
+    ),
+)
+families.add(target_family)
+
+experiment_name = f"adjust_rule_score_for_{target_family}"
+experiment = mlflow.set_experiment(experiment_name)
+mlflow.set_experiment_tag("families", " ".join(sorted(families)))
+
+from datetime import datetime
+run_name = datetime.now().isoformat(timespec="seconds")
+run = mlflow.start_run(experiment_id=experiment.experiment_id, run_name=run_name)
+
+model_module = sys.modules[model.__class__.__module__]
+if model_module is None:
+    code_path = str(Path(model_module.__file__).resolve())
+else:
+    code_path = None
+
+# %%
+from mlflow.types.schema import Schema, ColSpec
+log_model(
+    pytorch_model=model,
+    code_paths=code_path
+)
 
 # %%
 # Train
-def train_one_epoch(epoch_index, tb_writer, optimizer):
-    running_loss = 0.0
-    last_loss = 0.0
+def train_one_epoch(dataloader, model, loss_fn, optimizer):
+    total_loss = 0.0
 
-    # Here, we use enumerate(training_loader) instead of
-    # iter(training_loader) so that we can track the batch
-    # index and do some intra-epoch reporting
-    for i, data in enumerate(dataloader):
+    for batch_idx, data in enumerate(dataloader):
         # Every data instance is an input + label pair
         inputs, labels = data
         inputs, labels = inputs.to(device), labels.to(device)
@@ -240,31 +279,57 @@ def train_one_epoch(epoch_index, tb_writer, optimizer):
 
         # Adjust learning weights
         optimizer.step()
-        # my_lr_scheduler.step()
 
         # Gather data and report
-        running_loss += loss.item()
-        if i % 10000 == 999:
-            last_loss = running_loss / 1000  # loss per batch
-            print("  batch {} loss: {}".format(i + 1, last_loss))
-            tb_x = epoch_index * len(dataloader) + i + 1
-            tb_writer.add_scalar("Loss/train", last_loss, tb_x)
-            running_loss = 0.0
+        total_loss += loss.item()    
+    
+    average_loss = total_loss / len(dataloader)
+    return average_loss
 
-    return last_loss
+# %%
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+)
+import json
 
+def evaluate(dataloader, model):
+    model.eval()
+    with torch.no_grad():
+        
+        y_pred_batches, y_truth_batches = [], []
+        for x, y_truth in dataloader:
+            y_pred_batches.append(model(x).item())
+            y_truth_batches.append(y_truth)
+        
+        y_pred = torch.cat(y_pred_batches, dim=0)
+        y_truth = torch.cat(y_truth_batches, dim=0)
+        
+        metrics = {
+            "accuracy": accuracy_score(y_truth, y_pred),
+            "precision": precision_score(y_truth, y_pred),
+            "recall": recall_score(y_truth, y_pred),
+            "f1": f1_score(y_truth, y_pred),
+        }
+        
+        mlflow.log_metrics(metrics)
+        print(json.dumps(metrics, indent=4))
+        
+        
 
 # %%
 # Initializing in a separate cell so we can easily add more epochs to the same run
 from torch.utils.tensorboard.writer import SummaryWriter
 from datetime import datetime
-
+from tqdm import tqdm
 
 def load_model_from_path(model_path, model):
     model.load_state_dict(torch.load(model_path, weights_only=True))
 
 
-def run_epochs(learning_rate, epochs=100):
+def run_epochs(learning_rate, model, epochs=100):
     # Optimizer
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.1)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -284,7 +349,11 @@ def run_epochs(learning_rate, epochs=100):
 
         # Make sure gradient tracking is on, and do a pass over the data
         model.train(True)
-        avg_loss = train_one_epoch(epoch_number, writer, optimizer)
+        avg_loss = train_one_epoch(
+            dataloader=dataloader,
+            model=model,
+            loss_fn=loss_fn,
+            optimizer=optimizer)
 
         running_vloss = 0.0
         # Set the model to evaluation mode, disabling dropout and using population
@@ -325,25 +394,38 @@ def run_epochs(learning_rate, epochs=100):
             best_vloss = avg_vloss
             model_folder = Path("model_logs")
             model_folder.mkdir(parents=True, exist_ok=True)
-            model_path = "model_logs/model_{}_{}".format(timestamp, epoch_number)
+            model_path = "model_logs/model_{}_{}".format(
+                timestamp, epoch_number
+            )
             torch.save(model.state_dict(), model_path)
 
         epoch_number += 1
 
     return model_path
 
-
 # %%
 accuracy = 0
-for i in range(2):
+step = 0
+# %%
+import mlflow.pytorch
+for i in range(1):
     if accuracy == 1.0:
         break
-    
-    lrs = [10] * 1
+
+    lrs = [25] * 1
+    epochs = 100
     best_model_param_path = None
-    # lrs = [1]
     for lr in lrs:
-        best_model_param_path = run_epochs(lr, epochs=100)
+        mlflow.log_metrics(
+            {
+                "learning_rate": lr,
+                "epochs": epochs
+            },
+            step=step
+        )
+        
+        best_model_param_path = run_epochs(lr, model, epochs=epochs)
+        step += epochs
         if best_model_param_path is not None:
             load_model_from_path(best_model_param_path, model)
 
@@ -359,11 +441,9 @@ for i in range(2):
     if best_model_param_path is not None:
         load_model_from_path(best_model_param_path, model)
 
-
     def model_inference(model, x):
         with torch.no_grad():
             return model(x).item()
-
 
     x_input, y_truth = [], []
     for x, y in dataset:
@@ -382,7 +462,20 @@ for i in range(2):
     print(f"{precision=}")
     print(f"{recall=}")
     print(f"{f1=}")
-
+    
+    # TODO - Use mlflow.pytorch.autologging
+    
+    mlflow.pytorch.log_state_dict(model.state_dict(), artifact_path=f"checkpoint_{step}") # type: ignore
+    
+    mlflow.log_metrics(
+        {
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+        }, # type: ignore
+        step=step
+    )
 # %%
 from sklearn.metrics import (
     accuracy_score,
