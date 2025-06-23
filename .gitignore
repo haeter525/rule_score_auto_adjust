@@ -207,4 +207,4 @@ model_logs
 cache.db*
 runs
 
-classification/*
+classifications/*
