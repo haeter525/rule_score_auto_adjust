@@ -8,17 +8,22 @@ dotenv.load_dotenv()
 
 PATH_TO_DATASET = [
     "data/lists/family/droidkungfu.csv",
-    # "/mnt/storage/rule_score_auto_adjust/data/lists/family/apk-sample.csv",
+    "data/lists/family/basebridge.csv",
     "data/lists/benignAPKs_top_0.4_vt_scan_date.csv",
 ]
 
-PATH_TO_RULE_LIST = ["/mnt/storage/data/rule_to_release/0611/all_rules.csv"]
+PATH_TO_RULE_LIST = [
+    "/mnt/storage/data/rule_to_release/0627/rules_first_0_8_pr.csv",
+    "/mnt/storage/data/rule_to_release/default_rules.csv"
+]
 
 # %%
 import data_preprocess.rule as rule_lib
 import polars as pl
 
-rules = pl.concat(list(map(rule_lib.load_list, PATH_TO_RULE_LIST)))["rule"].to_list()
+rules = pl.concat(list(map(rule_lib.load_list, PATH_TO_RULE_LIST)))[
+    "rule"
+].to_list()
 rule_paths = [rule_lib.get(r) for r in rules]
 
 # %%
@@ -41,13 +46,14 @@ class ApkInfo:
         self.sha256 = sha256
         self.is_malicious = is_malicious
         self.path = apk_lib.download(sha256, dry_run=True)
-        
+
         if self.path is not None:
             self.analysis_result = analysis_result_lib.analyze_rules(
                 sha256, self.path, rule_paths, dry_run=True
             )
         else:
             self.analysis_result = {}
+
 
 sha256_table = pl.concat(list(map(apk_lib.read_csv, PATH_TO_DATASET)))
 original_apk_info_list = [
@@ -110,17 +116,23 @@ memory_issue_apks = {
     "00015824995BC2F452BBDE2833F79423A8DC6DA8364A641DFB6D068D44C557DF"
 }
 
-apk_info_list = show_and_filter(apk_info_list, lambda info: info.sha256 in memory_issue_apks)
+apk_info_list = show_and_filter(
+    apk_info_list, lambda info: info.sha256 in memory_issue_apks
+)
 apk_info_list = list(apk_info_list)
 
 # %%
 print("Balance the dataset by removing extra benign APKs.")
 
 from itertools import count
+
 benign_counter = count()
 num_of_malware = sum(1 for info in apk_info_list if info.is_malicious == 1)
 
-malicious_or_enough_benign = lambda info: info.is_malicious != 1 and next(benign_counter) >= num_of_malware
+malicious_or_enough_benign = (
+    lambda info: info.is_malicious != 1
+    and next(benign_counter) >= num_of_malware
+)
 apk_info_list = show_and_filter(apk_info_list, malicious_or_enough_benign)
 apk_info_list = list(apk_info_list)
 
@@ -132,30 +144,32 @@ malware_sha256 = {
 }
 all_sha256s = {apk.sha256 for apk in apk_info_list}
 
-missing_malware = [
-    m for m in malware_sha256 if m not in all_sha256s
-]
+missing_malware = [m for m in malware_sha256 if m not in all_sha256s]
 
-assert len(missing_malware) == 0 , f"Some malware is missing, check \"missing_malware\""
-    
+assert (
+    len(missing_malware) == 0
+), f'Some malware is missing, check "missing_malware"'
+
 # %%
 # 確認所有內建樣本都還存在（apk-sample.csv）
 
-builtin_sample = apk_lib.read_csv("/mnt/storage/rule_score_auto_adjust/data/lists/family/apk-sample.csv")["sha256"].to_list()
+builtin_sample = apk_lib.read_csv(
+    "/mnt/storage/rule_score_auto_adjust/data/lists/family/apk-sample.csv"
+)["sha256"].to_list()
 
 missing_apks = [
     sha256 for sha256 in builtin_sample if sha256 not in all_sha256s
 ]
-assert len(missing_malware) == 0 , f"Some apk is missing, check \"missing_apks\""
+assert len(missing_malware) == 0, f'Some apk is missing, check "missing_apks"'
 
 # %%
 # Build Dataset
 from data_preprocess import dataset as dataset_lib
 
 dataset = dataset_lib.ApkDataset(
-    sha256s = [apk.sha256 for apk in apk_info_list],
-    is_malicious = [apk.is_malicious for apk in apk_info_list],
-    rules = rules,
+    sha256s=[apk.sha256 for apk in apk_info_list],
+    is_malicious=[apk.is_malicious for apk in apk_info_list],
+    rules=rules,
 )
 
 print(f"Num of APK: {len(dataset)}")
@@ -169,6 +183,7 @@ dataset.preload()
 # %%
 # Create dataloader
 from torch.utils.data.dataloader import DataLoader
+
 # dataloader = DataLoader(dataset, batch_size=len(dataset), shuffle=True)
 dataloader = DataLoader(dataset, batch_size=len(dataset), shuffle=True)
 
@@ -182,13 +197,6 @@ from model import (
 model = RuleAdjustmentModel(len(dataset.rules))
 # model = RuleAdjustmentModel_NoTotalScore_Percentage(len(dataset.rules))
 print(model)
-# %%
-# Load Model From File
-# import torch
-# model.load_state_dict(
-#     torch.load("./model_logs/model_20250602_024356_99", weights_only=True)
-# )
-# model.eval()
 
 # %%
 # Move Model to GPU
@@ -484,13 +492,16 @@ from sklearn.metrics import (
     f1_score,
 )
 
+
 def model_inference(model, x):
     with torch.no_grad():
         return model(x).item()
 
+
 def model_calculate(model, x):
     with torch.no_grad():
         return model.calculate_apk_scores(x)
+
 
 x_input, y_truth = [], []
 for x, y in dataset:
@@ -510,6 +521,20 @@ print(f"{accuracy=}")
 print(f"{precision=}")
 print(f"{recall=}")
 print(f"{f1=}")
+
+mlflow.log_metrics(
+    {
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+    },
+    step=step
+)
+
+# %%
+# Record lrs and epochs (Optional, nice to have)
+# mlflow.log_text("(Ep 50) 20, 15, 10, 5 * 3, 8, 10 (Ep 100), 10, 20, 50, 100, 500, 500, 500, 100, 10, 10, 50", "lrs_and_epochs_records.txt", run.info.run_id)s
 # %%
 # Output adjusted scores and prediction for each apk
 
@@ -530,15 +555,16 @@ weight_dicts = (
         sha256,
         apk_lib.download(sha256, dry_run=True),
         rule_paths,
-        dry_run=True
-    ) | {"sha256": sha256}
+        dry_run=True,
+    )
+    | {"sha256": sha256}
     for sha256 in dataset.apk_info["sha256"]
 )
-weight_dfs = (
-    pl.DataFrame(weight) for weight in weight_dicts
-)
+weight_dfs = (pl.DataFrame(weight) for weight in weight_dicts)
 weights = pl.concat(weight_dfs, how="vertical")
-weights = weights.transpose(include_header=True, column_names="sha256", header_name="rule")
+weights = weights.transpose(
+    include_header=True, column_names="sha256", header_name="rule"
+)
 
 # Prepare adjusts rule scores
 # rule_scores = pl.DataFrame(
@@ -546,13 +572,17 @@ weights = weights.transpose(include_header=True, column_names="sha256", header_n
 # ).with_row_index()
 
 rule_scores = dataset.rules.join(
-    pl.DataFrame({"rule_score": model.get_rule_scores().cpu().detach().tolist()}).with_row_index(),
+    pl.DataFrame(
+        {"rule_score": model.get_rule_scores().cpu().detach().tolist()}
+    ).with_row_index(),
     on="index",
     how="left"
 )
-# %%
+
 # Combine rule_scores and weights
-weights_and_rule_scores = rule_scores.join(weights, on="rule", how="left", maintain_order="left")
+weights_and_rule_scores = rule_scores.join(
+    weights, on="rule", how="left", maintain_order="left"
+)
 
 new_column_names = ["sha256", "y_truth", "y_score", "y_pred"] + weights[
     "rule"
@@ -569,6 +599,17 @@ combined = (
 )
 
 combined.write_csv("apk_prediction.csv", include_header=True)
+
+mlflow.log_artifact(
+    "apk_prediction.csv",
+    "apk_prediction.csv",
+    run.info.run_id
+)
+
+# %%
+# Close Run
+mlflow.end_run()
+
 # %%
 # Apply Rule scores
 # if input("Apply the rule scores? (Y/N)").lower() == "N":
@@ -603,26 +644,32 @@ combined.write_csv("apk_prediction.csv", include_header=True)
 # Apply Rule to Quark Rules
 # Load prediction
 import polars as pl
-apk_prediction = pl.read_csv("/mnt/storage/rule_score_auto_adjust/apk_prediction.csv")
+
+apk_prediction = pl.read_csv(
+    "/mnt/storage/rule_score_auto_adjust/apk_prediction.csv"
+)
 # %%
 # Extract rule score
-apk_prediction = apk_prediction.transpose(include_header=True, column_names="sha256")
-apk_prediction = apk_prediction.select(["column","rule_score"])
+apk_prediction = apk_prediction.transpose(
+    include_header=True, column_names="sha256"
+)
+apk_prediction = apk_prediction.select(["column", "rule_score"])
 apk_prediction = apk_prediction.filter(pl.col("column").str.ends_with(".json"))
 # %%
 # Apply to Quark rules
 from pathlib import Path
 import json
+
 path_to_quark_rules = Path("/mnt/storage/quark-rules/rules")
 
 for rule_name, score in apk_prediction.iter_rows():
     rule_path = path_to_quark_rules / rule_name
     assert rule_path.exists(), f"{rule_path} doesn't exists."
-    
+
     round_score = round(score, 2)
     # round_score = score
     print(f"更新 {rule_path} 規則分數為 {round_score}")
-    
+
     with open(rule_path, "r") as f:
         rule_data = json.loads(f.read())
         rule_data["score"] = round_score

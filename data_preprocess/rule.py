@@ -1,5 +1,7 @@
 import hashlib
 from pathlib import Path
+import tempfile
+import mlflow.artifacts
 import polars as pl
 import os
 import dotenv
@@ -72,3 +74,33 @@ if __name__ == "__main__":
     drop_folder.mkdir(parents=True, exist_ok=True)
     for rule in rule_to_drop:
         rule.replace(drop_folder / rule.name)
+
+
+def get_apis(rule: str | None = None, rule_path: Path | None = None) -> list[str]:
+    if rule_path is None:
+        assert rule is not None, f"Please provide rule or rule_path"
+        
+        rule_path = get(rule)
+        
+    with rule_path.open("r") as inFile:
+         content = json.load(inFile)
+         
+    def get_api_str(api: dict[str, str]):
+        return f'{api["class"]}{api["method"]}{api["descriptor"]}'            
+    
+    api_strs = [
+        get_api_str(api)
+        for api in content["api"]
+    ]
+    
+    return api_strs
+
+def with_ai_adjusted_scores(rules: pl.DataFrame, run_id: str):
+    import mlflow
+    
+    prediction_csv = mlflow.artifacts.download_artifacts(
+        run_id=run_id,
+        artifact_path="apk_prediction.csv"
+    )
+    
+    

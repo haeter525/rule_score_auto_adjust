@@ -17,7 +17,7 @@ SORT_BY_COLUMN = "vt_scan_date"
 
 PORTION = 0.4
 
-EXTRA = 10 # 多曲幾個 APK 作為備用，以防後續部分 APK 無法分析
+EXTRA = 10 # 多取幾個 APK 作為備用，以防後續部分 APK 無法分析
 
 GET_OUTPUT_APK_LIST: Callable[[Path], Path] = lambda source: source.parent / f"{source.stem}_top_{PORTION}_{SORT_BY_COLUMN}.csv"
 
