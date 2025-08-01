@@ -189,8 +189,8 @@ print(
 
 # %%
 # 產出規則清單供 AI 訓練權重用
-stage_5_rules.select("rule").write_csv(
-    "/mnt/storage/data/rule_to_release/0627/unselected_rules.csv"
+stage_5_rules_removing_default.select("rule").write_csv(
+    "/mnt/storage/data/rule_to_release/golddream/unselected_rules.csv"
 )
 
 # 產出 quark rules 規則清單

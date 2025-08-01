@@ -9,11 +9,12 @@ dotenv.load_dotenv()
 PATH_TO_DATASET = [
     "data/lists/family/droidkungfu.csv",
     "data/lists/family/basebridge.csv",
+    "data/lists/family/golddream.csv",
     "data/lists/benignAPKs_top_0.4_vt_scan_date.csv",
 ]
 
 PATH_TO_RULE_LIST = [
-    "/mnt/storage/data/rule_to_release/0627/rules_first_0_8_pr.csv",
+    "/mnt/storage/data/rule_to_release/golddream/rule_added.csv",
     "/mnt/storage/data/rule_to_release/default_rules.csv"
 ]
 
@@ -84,6 +85,8 @@ def show_and_filter(
     print(
         f'Drop {len(to_drop)} APKs, set checkpoint in this function and see "to_drop" for details'
     )
+    
+    print(to_drop)
 
 
 apk_info_list = original_apk_info_list
@@ -199,7 +202,7 @@ model = RuleAdjustmentModel(len(dataset.rules))
 print(model)
 
 # %%
-# Move Model to GPU
+# Check is CUDA available
 import torch
 
 assert torch.cuda.is_available()
@@ -414,15 +417,15 @@ def run_epochs(learning_rate, model, epochs=100):
 # %%
 accuracy = 0
 step = 0
+best_model_param_path = None
 # %%
 import mlflow.pytorch
 for i in range(1):
     if accuracy == 1.0:
         break
 
-    lrs = [25] * 1
+    lrs = [0.1] * 1
     epochs = 100
-    best_model_param_path = None
     for lr in lrs:
         mlflow.log_metrics(
             {
@@ -484,6 +487,10 @@ for i in range(1):
         }, # type: ignore
         step=step
     )
+
+# %%
+load_model_from_path(best_model_param_path, model)
+mlflow.pytorch.log_state_dict(model.state_dict(), artifact_path=f"global_bast")
 # %%
 from sklearn.metrics import (
     accuracy_score,

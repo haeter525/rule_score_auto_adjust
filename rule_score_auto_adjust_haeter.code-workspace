@@ -1,0 +1,29 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../data"
+		}
+	],
+	"settings": {
+		"git.ignoreLimitWarning": true,
+		"workbench.colorCustomizations": {
+			"activityBar.background": "#2C2E28",
+			"titleBar.activeBackground": "#3D4138",
+			"titleBar.activeForeground": "#FAFBFA"
+		},
+		"editor.rulers": [
+			100
+		],
+		"black-formatter.args": [
+			"-l 100"
+		]
+	},
+	"extensions": {
+		"recommendations": [
+			"pomdtr.excalidraw-editor"
+		]
+	}
+}

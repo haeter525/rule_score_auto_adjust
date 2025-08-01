@@ -67,6 +67,7 @@ if __name__ == "__main__":
     PATH_TO_DATASET = [
         "data/lists/family/droidkungfu.csv",
         "data/lists/family/basebridge.csv",
+        "data/lists/family/golddream.csv",
         "data/lists/benignAPKs_top_0.4_vt_scan_date.csv",
     ]
 
@@ -76,7 +77,7 @@ if __name__ == "__main__":
 
     PATH_TO_RULE_LIST = [
         "/mnt/storage/data/rule_to_release/default_rules.csv",
-        "/mnt/storage/data/rule_to_release/0627/unselected_rules.csv"
+        "/mnt/storage/data/rule_to_release/golddream/rule_added.csv"
     ]
     rules = pl.concat(
         [rule_lib.load_list(rule_list) for rule_list in PATH_TO_RULE_LIST],

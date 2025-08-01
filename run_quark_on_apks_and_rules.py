@@ -1,7 +1,6 @@
 # %%
 # 載入 APK 清單
 import os
-from pathlib import Path
 from typing import Any
 import polars as pl
 import data_preprocess.apk as apk_lib
