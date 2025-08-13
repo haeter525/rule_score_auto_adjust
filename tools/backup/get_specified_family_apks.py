@@ -6,7 +6,7 @@ import tqdm
 import click
 
 import data_preprocess.apk as apk_lib
-import data_preprocess.virust_total as vt
+import data_preprocess.virus_total as vt
 import os
 import dotenv
 dotenv.load_dotenv()

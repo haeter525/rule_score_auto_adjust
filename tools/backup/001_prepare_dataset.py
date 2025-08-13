@@ -13,8 +13,8 @@ IS_MALICIOUS = [
     True
 ]
 
-DATASET_FOLDER = Path("data/dataset")
-assert DATASET_FOLDER.exists()
+DATASET_CACHE_FOLDER = Path("data/dataset")
+assert DATASET_CACHE_FOLDER.exists()
 
 APK_FOLDER = Path("/Volumes/SF_Storage/apks") # APK 檔案的存放位置
 assert APK_FOLDER.exists()
@@ -34,7 +34,7 @@ def calculate_sha256(path):
     return sha256_digest
 
 output_paths = [
-    DATASET_FOLDER / f"{p.stem}_{calculate_sha256(p)}.csv"
+    DATASET_CACHE_FOLDER / f"{p.stem}_{calculate_sha256(p)}.csv"
     for p in SOURCE_APK_LISTS
 ]
 

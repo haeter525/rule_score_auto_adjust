@@ -6,6 +6,7 @@ import polars as pl
 import data_preprocess.rule as rule_lib
 from prefect import task
 import prefect.cache_policies as cache_policies
+from prefect.logging import get_run_logger
 
 
 def update_rule_content(
@@ -37,9 +38,7 @@ def collect_rules_to_folder_from_apk_prediction(
     # Get rule score from apk_prediction
     rule_scores: dict[str, float] = (
         apk_prediction_df.filter(pl.col("sha256").str.ends_with("rule_score"))
-        .select(
-            [col for col in apk_prediction_df.columns if col.endswith(".json")]
-        )
+        .select([col for col in apk_prediction_df.columns if col.endswith(".json")])
         .to_dicts()[0]
     )
 
@@ -78,30 +77,30 @@ def collect_rules_to_folder(
 
     return rule_folder
 
-@task(log_prints=True)
-def create_symbolic_links_to_rules(rules: list[Path], rule_folder: Path):
-    for rule in rules:
-        target_path = rule_folder / rule.name
+
+@task()
+def create_symbolic_links_to_rules(rule_paths: list[Path], rule_folder: Path):
+    logger = get_run_logger()
+    logger.info(f"Creating symbolic links to {len(rule_paths)} rules in {rule_folder}")
+
+    for rule_path in rule_paths:
+        target_path = rule_folder / rule_path.name
         if target_path.exists():
-            print(f"Warning: {target_path} already exists, removing it.")
+            logger.warning(f"{target_path} already exists, overwriting it.")
             target_path.unlink()
 
-        target_path.symlink_to(rule)
+        target_path.symlink_to(rule_path)
 
 
 @task
 def create_rule_folder() -> Path:
-    rule_folder = Path(
-        tempfile.TemporaryDirectory(prefix="rule_folder_", delete=False).name
-    )
+    rule_folder = Path(tempfile.TemporaryDirectory(prefix="rule_folder_", delete=False).name)
     print(f"Create rule folder: {str(rule_folder)}")
     return rule_folder
 
 
 if __name__ == "__main__":
     output_path = collect_rules_to_folder_from_apk_prediction(
-        apk_prediction=Path(
-            "/mnt/storage/rule_score_auto_adjust_haeter/2025-06-28T18:38:53.csv"
-        )
+        apk_prediction=Path("/mnt/storage/rule_score_auto_adjust_haeter/2025-06-28T18:38:53.csv")
     )
     print(output_path)

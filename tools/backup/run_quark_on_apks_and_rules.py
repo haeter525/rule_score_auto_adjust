@@ -1,5 +1,7 @@
 # %%
 # 載入 APK 清單
+import os
+from typing import Any
 import polars as pl
 import data_preprocess.apk as apk_lib
 
@@ -10,7 +12,7 @@ dataset = pl.concat((apk_lib.read_csv(ds) for ds in DATASET_PATHS)).unique(
 )
 print(dataset.schema)
 # 對於每個樣本，透過 VT 取得其 threat_label，並進一步拆解成 major, middle, minor
-import data_preprocess.virust_total as vt
+import data_preprocess.virus_total as vt
 import tqdm
 import re
 
@@ -72,7 +74,7 @@ print("middle_threat_label:")
 print(dataset["middle_threat_label"].value_counts().sort(by="count", descending=True))
 
 # %%
-# 挑選一個 middle threat label 作為要釋出規則的惡意程式家族
+# 挑選一個惡意程式家族來跑 Quark 分析
 import click
 
 target_middle_threat_label = click.prompt(
@@ -91,7 +93,47 @@ print(target_dataset.head(5))
 print(f"Num of apk: {len(target_dataset)}")
 
 # %%
-# 將屬於此家族的樣本寫入 csv
-target_dataset.write_csv(f"data/lists/family/{target_middle_threat_label}.csv")
+# 跑 Quark 分析
+import json
+from quark.report import Report
+import diskcache
+from typing import Any
+import os
 
+cache = diskcache.FanoutCache(f"{os.getenv("CACHE_FOLDER")}/quark_analysis_cache")
+
+@cache.memoize()
+def run_quark_analysis(sha256:str) -> dict[str, Any]:
+    report = Report()
+    apk_path = apk_lib.download(sha256, dry_run=True)
+    
+    report.analysis(
+        apk=apk_path,
+        rule="/mnt/storage/quark-rules/rules"
+    )
+    
+    json_report = report.get_report(
+        "json"
+    )
+    return json_report
+
+def get_thread_label(sha256) -> str:
+    json_report = run_quark_analysis(sha256)
+    return json_report["threat_level"]
+    
+target_dataset = target_dataset.with_columns(
+    pl.col("sha256").map_elements(get_thread_label, return_dtype=pl.String(), strategy="threading").alias("threat_level")
+).with_columns(
+    pl.col("threat_level").eq("High Risk").alias("actual_result")
+)
+
+target_dataset
+# %%
+from sklearn.metrics import accuracy_score
+
+actual = target_dataset["actual_result"].to_list()
+expected = [True] *  len(target_dataset["actual_result"])
+
+accuracy = accuracy_score(expected, actual)
+print(f"Accuracy of Quark analysis is {accuracy:.2%}")
 # %%

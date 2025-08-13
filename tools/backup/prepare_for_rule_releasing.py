@@ -12,7 +12,7 @@ dataset = pl.concat((apk_lib.read_csv(ds) for ds in DATASET_PATHS)).unique(
 )
 print(dataset.schema)
 # 對於每個樣本，透過 VT 取得其 threat_label，並進一步拆解成 major, middle, minor
-import data_preprocess.virust_total as vt
+import data_preprocess.virus_total as vt
 import tqdm
 import re
 
@@ -190,7 +190,7 @@ print(
 # %%
 # 產出規則清單供 AI 訓練權重用
 stage_5_rules_removing_default.select("rule").write_csv(
-    "/mnt/storage/data/rule_to_release/golddream/unselected_rules.csv"
+    "/mnt/storage/data/rule_to_release/pjapps/unselected_rules.csv"
 )
 
 # 產出 quark rules 規則清單
@@ -252,13 +252,13 @@ print(f"Min score: {subset['rule_score'].min()}")
 
 # %%
 # 對於每個規則，生成一個規則描述
-from generate_rule_description import BehaviorDescriptionAgent
+from tools.generate_rule_description import RuleDescriptionAgent
 import os
 import json
 import tqdm
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-agent = BehaviorDescriptionAgent(OPENAI_API_KEY)
+agent = RuleDescriptionAgent(OPENAI_API_KEY)
 
 with tqdm.tqdm(desc="Getting rule description", total=len(subset)) as progress:
 

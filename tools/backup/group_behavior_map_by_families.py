@@ -1,7 +1,7 @@
 from pathlib import Path
 import re
 import polars as pl
-import data_preprocess.virust_total as vt
+import data_preprocess.virus_total as vt
 import data_preprocess.apk as apk_lib
 
 ThreatLabels = pl.Struct(

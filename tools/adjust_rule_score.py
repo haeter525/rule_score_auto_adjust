@@ -6,7 +6,7 @@ import mlflow.pytorch
 
 dotenv.load_dotenv()
 
-PATH_TO_DATASET = [
+PATH_TO_APK_LIST = [
     "data/lists/family/droidkungfu.csv",
     "data/lists/family/basebridge.csv",
     "data/lists/family/golddream.csv",
@@ -56,7 +56,7 @@ class ApkInfo:
             self.analysis_result = {}
 
 
-sha256_table = pl.concat(list(map(apk_lib.read_csv, PATH_TO_DATASET)))
+sha256_table = pl.concat(list(map(apk_lib.read_csv, PATH_TO_APK_LIST)))
 original_apk_info_list = [
     ApkInfo(sha256, is_malicious)
     for sha256, is_malicious in tqdm.tqdm(
@@ -236,7 +236,7 @@ from pathlib import Path
 
 mlflow.set_tracking_uri(uri="http://localhost:5000")
 
-families = {Path(p).stem for p in PATH_TO_DATASET}
+families = {Path(p).stem for p in PATH_TO_APK_LIST}
 
 target_family = click.prompt(
     "Input the family name",
@@ -646,41 +646,3 @@ mlflow.end_run()
 
 #     with open(rule_path, "w") as f:
 #         json.dump(rule_data, f, indent=4)
-
-# %%
-# Apply Rule to Quark Rules
-# Load prediction
-import polars as pl
-
-apk_prediction = pl.read_csv(
-    "/mnt/storage/rule_score_auto_adjust/apk_prediction.csv"
-)
-# %%
-# Extract rule score
-apk_prediction = apk_prediction.transpose(
-    include_header=True, column_names="sha256"
-)
-apk_prediction = apk_prediction.select(["column", "rule_score"])
-apk_prediction = apk_prediction.filter(pl.col("column").str.ends_with(".json"))
-# %%
-# Apply to Quark rules
-from pathlib import Path
-import json
-
-path_to_quark_rules = Path("/mnt/storage/quark-rules/rules")
-
-for rule_name, score in apk_prediction.iter_rows():
-    rule_path = path_to_quark_rules / rule_name
-    assert rule_path.exists(), f"{rule_path} doesn't exists."
-
-    round_score = round(score, 2)
-    # round_score = score
-    print(f"更新 {rule_path} 規則分數為 {round_score}")
-
-    with open(rule_path, "r") as f:
-        rule_data = json.loads(f.read())
-        rule_data["score"] = round_score
-
-    with open(rule_path, "w") as f:
-        json.dump(rule_data, f, indent=4)
-# %%

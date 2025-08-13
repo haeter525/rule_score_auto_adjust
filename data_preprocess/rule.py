@@ -14,7 +14,7 @@ RULE_LIST_SCHEMA = {"rule": pl.String()}
 
 
 def get_folder() -> Path:
-    return Path(os.getenv("GENERATED_RULE_FOLDER"))
+    return Path(os.getenv("RULE_FOLDER"))
 
 
 def load_list(rule_list: str) -> pl.DataFrame:

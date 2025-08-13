@@ -7,6 +7,7 @@ from threading import Timer
 from typing import Any
 from threading import BoundedSemaphore
 import time
+import re
 
 
 class RatedSemaphore(BoundedSemaphore):
@@ -14,9 +15,7 @@ class RatedSemaphore(BoundedSemaphore):
 
     def __init__(self, value=1, period=1):
         BoundedSemaphore.__init__(self, value)
-        t = Timer(
-            period, self._add_token_loop, kwargs=dict(time_delta=float(period) / value)
-        )
+        t = Timer(period, self._add_token_loop, kwargs=dict(time_delta=float(period) / value))
         t.daemon = True
         t.start()
 
@@ -45,13 +44,16 @@ lock = RatedSemaphore(4, 60)
 
 
 @cache.memoize()
-def get_virus_total_report(sha256: str) -> tuple[dict[str, Any], Status]:
+def get_virus_total_report(
+    sha256: str, api_key: str | None = os.getenv("VIRUS_TOTAL_API_KEY")
+) -> tuple[dict[str, Any], Status]:
     with lock:
+        print(f"Requesting VirusTotal report for {sha256}")
         url = f"https://www.virustotal.com/api/v3/files/{sha256}"
 
         headers = {
             "accept": "application/json",
-            "x-apikey": os.environ["VIRUS_TOTAL_API_KEY"],
+            "x-apikey": api_key,
         }
 
         response = requests.get(url, headers=headers)
@@ -66,3 +68,30 @@ def get_virus_total_report(sha256: str) -> tuple[dict[str, Any], Status]:
         )
 
         return json_rep, status
+
+
+def get_threat_label(sha256: str, api_key: str | None = os.getenv("VIRUS_TOTAL_API_KEY")) -> dict[str, str]:
+    try:
+        report, _ = get_virus_total_report(sha256, api_key)
+
+        threat_label = (
+            report.get("data", {})
+            .get("attributes", {})
+            .get("popular_threat_classification", {})
+            .get("suggested_threat_label", "./")
+        )
+
+        major, middle, minor = re.split("[./]", threat_label)
+        return {
+            "major_threat_label": major,
+            "middle_threat_label": middle,
+            "minor_threat_label": minor,
+        }
+
+    except BaseException as e:
+        print(f"Error on {sha256}: {e}")
+        return {
+            "major_threat_label": "",
+            "middle_threat_label": "",
+            "minor_threat_label": "",
+        }

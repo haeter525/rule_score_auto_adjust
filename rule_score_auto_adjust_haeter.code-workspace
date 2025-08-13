@@ -4,7 +4,7 @@
 			"path": "."
 		},
 		{
-			"path": "../data"
+			"path": "../../data"
 		}
 	],
 	"settings": {
@@ -19,7 +19,8 @@
 		],
 		"black-formatter.args": [
 			"-l 100"
-		]
+		],
+		"jupyter.notebookFileRoot": "${workspaceFolder:rule_score_auto_adjust_haeter}",
 	},
 	"extensions": {
 		"recommendations": [

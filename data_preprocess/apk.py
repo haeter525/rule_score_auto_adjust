@@ -1,10 +1,11 @@
+import click
 import polars as pl
 import requests
 from pathlib import Path
-import dotenv
 import enum
 import os
 from diskcache import FanoutCache
+import dotenv
 
 dotenv.load_dotenv()
 
@@ -12,9 +13,9 @@ cache = FanoutCache(f"{os.getenv("CACHE_FOLDER")}/apk_download_cache")
 
 
 class APK_DOWNLOAD_STATUS(enum.Enum):
-    SUCCESS: int = 0
-    FAILED: int = 1
-    NEED_DOWNLOAD: int = 2
+    SUCCESS = 0
+    FAILED = 1
+    NOT_TRIED = 2
 
 
 APK_SCHEMA = {
@@ -37,22 +38,8 @@ def write_csv(apk_list: pl.DataFrame, output_path: str) -> Path:
     return Path(output_path).resolve()
 
 
-def _calculate_sha256(file_path: Path) -> str:
-    import hashlib
-
-    sha256_hash = hashlib.sha256(usedforsecurity=False)
-    with open(file_path, "rb") as f:
-        for byte_block in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(byte_block)
-    return sha256_hash.hexdigest().upper()
-
-
-def get_folder() -> Path:
-    return Path(os.getenv("APK_FOLDER", "NOT_DEFINED"))
-
-
 def _get_path(sha256: str) -> Path:
-    apk_path = get_folder() / f"{sha256}.apk"
+    apk_path = Path(os.getenv("APK_FOLDER", "NOT_DEFINED")) / f"{sha256}.apk"
     return apk_path.resolve()
 
 
@@ -112,5 +99,30 @@ def download(sha256: str, use_cache: bool = True, dry_run: bool = False) -> Path
             return _get_path(sha256)
         case APK_DOWNLOAD_STATUS.FAILED:
             return None
-        case APK_DOWNLOAD_STATUS.NEED_DOWNLOAD:
+        case APK_DOWNLOAD_STATUS.NOT_TRIED:
             return None
+
+    return None
+
+
+@click.command()
+@click.argument("sha256", type=str)
+@click.option("--use-cache/--no-cache", is_flag=True, default=False, help="Ignore cache and force download.")
+def entry_point(sha256: str, use_cache: bool) -> None:
+    """
+    Download an APK by its SHA256 hash.
+    """
+    
+    filepath = download(
+        sha256,
+        use_cache=use_cache
+    )
+
+    if filepath:
+        click.echo(f"APK downloaded successfully: {filepath}")
+    else:
+        click.echo("Failed to download APK.")
+
+
+if __name__ == "__main__":
+    entry_point()
