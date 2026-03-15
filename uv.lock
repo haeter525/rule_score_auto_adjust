@@ -2637,6 +2637,24 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/45/a8/283556be5310e61a8360766e510ed72a751433c1679c3f907f85798f7ccf/prefect-3.6.10-py3-none-any.whl", hash = "sha256:6544c33fe87be657a7b3187f4ef42edd1b153ffc75531717cc05afcb2c8392fe", size = 11369646, upload-time = "2026-01-08T21:17:34.111Z" },
 ]
 
+[package.optional-dependencies]
+ray = [
+    { name = "prefect-ray", marker = "sys_platform == 'linux'" },
+]
+
+[[package]]
+name = "prefect-ray"
+version = "0.4.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "prefect", marker = "sys_platform == 'linux'" },
+    { name = "ray", extra = ["default"], marker = "sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/82/97/ad260510f1c3de975b886bd4a0e033be914d6d74b13455a40142c40ddd20/prefect_ray-0.4.5.tar.gz", hash = "sha256:73c3e0f84887ea8de0eb857004b7bc5dda0acfd4ad515423a1fac5fd121c9ef4", size = 16149, upload-time = "2025-06-27T15:15:21.253Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4c/07/1dafb6dce6507fb2fc4aea60663cd31ad418e6fda8f43cabd1e9778cecaf/prefect_ray-0.4.5-py3-none-any.whl", hash = "sha256:d1783efaee22222f1977b3a65d5f8ae6aa89b3d2d71f11ab79652efc21d531b9", size = 11565, upload-time = "2025-06-27T15:15:20.121Z" },
+]
+
 [[package]]
 name = "prettytable"
 version = "3.17.0"
@@ -3387,7 +3405,7 @@ dependencies = [
     { name = "pathvalidate", marker = "sys_platform == 'linux'" },
     { name = "perfect", marker = "sys_platform == 'linux'" },
     { name = "polars", marker = "sys_platform == 'linux'" },
-    { name = "prefect", marker = "sys_platform == 'linux'" },
+    { name = "prefect", extra = ["ray"], marker = "sys_platform == 'linux'" },
     { name = "pyzipper", marker = "sys_platform == 'linux'" },
     { name = "quark-engine", marker = "sys_platform == 'linux'" },
     { name = "ray", extra = ["data", "default"], marker = "sys_platform == 'linux'" },
@@ -3414,7 +3432,7 @@ requires-dist = [
     { name = "pathvalidate" },
     { name = "perfect", specifier = ">=0.0.1" },
     { name = "polars", specifier = ">=1.30.0" },
-    { name = "prefect", specifier = ">=3.6.10" },
+    { name = "prefect", extras = ["ray"], specifier = ">=3.6.10" },
     { name = "pyzipper", specifier = ">=0.3.6" },
     { name = "quark-engine", directory = "../quark-engine" },
     { name = "ray", extras = ["data", "default"], specifier = ">=2.46.0" },

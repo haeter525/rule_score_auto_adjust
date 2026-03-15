@@ -26,7 +26,7 @@ dependencies = [
     "tqdm>=4.67.1",
     "pathvalidate",
     "pyzipper>=0.3.6",
-    "prefect>=3.6.10",
+    "prefect[ray]>=3.6.10",
     "quark-engine",
 ]
 

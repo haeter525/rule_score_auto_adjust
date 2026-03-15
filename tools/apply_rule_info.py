@@ -51,7 +51,7 @@ def apply_rule_description_and_labels(
         rule_description_and_labels.iter_rows(named=False)
     ):
         rule_path = rule_base_folder / rule_name
-        labels = label_str.split("|")
+        labels = label_str.split("|") if label_str else []
 
         update_rule_content(
             rule_path, functools.partial(update_crime, description=description, labels=labels)

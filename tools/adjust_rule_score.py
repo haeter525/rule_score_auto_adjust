@@ -65,9 +65,7 @@ class ApkInfo:
         self.path = apk_lib.download(sha256, dry_run=True)
 
         if self.path is not None:
-            self.analysis_result = analysis_result_lib.analyze_rules(
-                sha256, self.path, rule_paths, dry_run=True
-            )
+            self.analysis_result = analysis_result_lib.analyze_rules(sha256, self.path, rule_paths, dry_run=True)
         else:
             self.analysis_result = {}
 
@@ -156,8 +154,7 @@ def run_epochs(
 
         avg_vloss = running_vloss / (i + 1)
         print(
-            f"EP {epoch_number + 1}, LR {optimizer.param_groups[0]['lr']}, "
-            f"LOSS train {avg_loss} valid {avg_vloss}"
+            f"EP {epoch_number + 1}, LR {optimizer.param_groups[0]['lr']}, " f"LOSS train {avg_loss} valid {avg_vloss}"
         )
 
         if avg_vloss < best_vloss:
@@ -190,9 +187,7 @@ def prepare_data(
     """Loads and preprocesses data."""
     rules = [rule.name for rule in rule_paths]
 
-    sha256_table = pl.concat(
-        pl.read_csv(p, columns=["sha256", "is_malicious"]) for p in path_to_apk_list
-    )
+    sha256_table = pl.concat(pl.read_csv(p, columns=["sha256", "is_malicious"]) for p in path_to_apk_list)
     original_apk_info_list = [
         ApkInfo(sha256, is_malicious, rule_paths)
         for sha256, is_malicious in tqdm.tqdm(
@@ -222,16 +217,12 @@ def prepare_data(
 
     print("Filter out apks that Quark failed to analyze due to memory issue.")
     memory_issue_apks = {"00015824995BC2F452BBDE2833F79423A8DC6DA8364A641DFB6D068D44C557DF"}
-    apk_info_list = list(
-        show_and_filter(apk_info_list, lambda info: info.sha256 in memory_issue_apks)
-    )
+    apk_info_list = list(show_and_filter(apk_info_list, lambda info: info.sha256 in memory_issue_apks))
 
     print("Balance the dataset by removing extra benign APKs.")
     benign_counter = count()
     num_of_malware = sum(1 for info in apk_info_list if info.is_malicious == 1)
-    malicious_or_enough_benign = (
-        lambda info: info.is_malicious != 1 and next(benign_counter) >= num_of_malware
-    )
+    malicious_or_enough_benign = lambda info: info.is_malicious != 1 and next(benign_counter) >= num_of_malware
     apk_info_list = list(show_and_filter(apk_info_list, malicious_or_enough_benign))
 
     malware_sha256 = {apk.sha256 for apk in original_apk_info_list if apk.is_malicious == 1}
@@ -239,11 +230,7 @@ def prepare_data(
     missing_malware = [m for m in malware_sha256 if m not in all_sha256s]
     # assert len(missing_malware) == 0, f"Missing malware samples: {missing_malware}"
 
-    builtin_samples = (
-        pl.read_csv(builtin_apk_list, columns=["sha256"])["sha256"].to_list()
-        if builtin_apk_list
-        else []
-    )
+    builtin_samples = pl.read_csv(builtin_apk_list, columns=["sha256"])["sha256"].to_list() if builtin_apk_list else []
     missing_apks = [sha256 for sha256 in builtin_samples if sha256 not in all_sha256s]
     assert len(missing_apks) == 0, f"Missing builtin samples: {missing_apks}"
 
@@ -280,7 +267,9 @@ def setup_mlflow(
     path_to_apk_list: List[Path],
 ) -> Tuple[Run, int]:
     """Sets up MLflow for a new or resumed run."""
-    mlflow.set_tracking_uri(uri="http://localhost:5000")
+    import os
+    port = os.environ["MLFLOW_PORT"]
+    mlflow.set_tracking_uri(uri=f"http://localhost:{port}")
     step = 0
     if run_id:
         run = mlflow.start_run(run_id=run_id)
@@ -291,9 +280,7 @@ def setup_mlflow(
         if checkpoints:
             latest_checkpoint = max(checkpoints, key=lambda p: int(p.split("_")[-1]))
             step = int(latest_checkpoint.split("_")[-1])
-            local_path = mlflow.artifacts.download_artifacts(
-                run_id=run_id, artifact_path=latest_checkpoint
-            )
+            local_path = mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path=latest_checkpoint)
             model.load_state_dict(torch.load(local_path))
             print(f"Resuming from run {run_id} at step {step} from checkpoint {latest_checkpoint}")
     else:
@@ -316,11 +303,7 @@ def setup_mlflow(
 
         model_module = sys.modules[model.__class__.__module__]
         code_path = None
-        if (
-            model_module is not None
-            and hasattr(model_module, "__file__")
-            and model_module.__file__ is not None
-        ):
+        if model_module is not None and hasattr(model_module, "__file__") and model_module.__file__ is not None:
             code_path = [str(Path(model_module.__file__).resolve())]
 
         log_model(pytorch_model=model, code_paths=code_path)
@@ -348,9 +331,7 @@ def train_model(
 
         mlflow.log_metrics({"learning_rate": lr, "epochs": epochs}, step=step)
 
-        current_best_path, current_vloss = run_epochs(
-            lr, model, epochs, dataloader, loss_fn, device
-        )
+        current_best_path, current_vloss = run_epochs(lr, model, epochs, dataloader, loss_fn, device)
         if current_best_path is not None:
             if current_vloss < best_vloss:
                 best_vloss = current_vloss
@@ -401,9 +382,7 @@ def log_results(
     output_csv_path: Path,
 ) -> None:
     """Logs final results and artifacts."""
-    y_truth, y_score, y_pred, accuracy, precision, recall, f1 = calculate_metrics(
-        model, dataset_obj, device
-    )
+    y_truth, y_score, y_pred, accuracy, precision, recall, f1 = calculate_metrics(model, dataset_obj, device)
 
     mlflow.log_metrics(
         {
@@ -439,16 +418,12 @@ def log_results(
     weights = weights.transpose(include_header=True, column_names="sha256", header_name="rule")
 
     rule_scores = dataset_obj.rules.join(
-        pl.DataFrame(
-            {"rule_score": model.get_rule_scores().cpu().detach().tolist()}
-        ).with_row_index(),
+        pl.DataFrame({"rule_score": model.get_rule_scores().cpu().detach().tolist()}).with_row_index(),
         on="index",
         how="left",
     )
 
-    weights_and_rule_scores = rule_scores.join(
-        weights, on="rule", how="left", maintain_order="left"
-    )
+    weights_and_rule_scores = rule_scores.join(weights, on="rule", how="left", maintain_order="left")
 
     new_column_names = ["sha256", "y_truth", "y_score", "y_pred"] + weights["rule"].to_list()
 
@@ -502,9 +477,7 @@ def calculate_metrics(model, dataset_obj, device):
     default="0.1",
     help="Comma-separated learning rates.",
 )
-@click.option(
-    "--epochs", "epochs", type=int, default=100, help="Number of epochs for each learning rate."
-)
+@click.option("-e", "--epochs", "epochs", type=int, default=100, help="Number of epochs for each learning rate.")
 @click.option(
     "--target-family",
     "target_family",
@@ -513,6 +486,7 @@ def calculate_metrics(model, dataset_obj, device):
     help="Target family for the experiment.",
 )
 @click.option(
+    "-r",
     "--rule-folder",
     "rule_folder",
     multiple=True,
@@ -520,6 +494,7 @@ def calculate_metrics(model, dataset_obj, device):
     help="Path to a rule folder. Can be specified multiple times.",
 )
 @click.option(
+    "-a",
     "--apk-list",
     "apk_list",
     multiple=True,
@@ -551,9 +526,7 @@ def main(
     """Main function for the CLI tool."""
     lrs = [float(lr) for lr in lrs_str.split(",")]
 
-    rule_paths = [
-        rule for folder in rule_folder for rule in folder.rglob("*.json") if rule.is_file()
-    ]
+    rule_paths = [rule for folder in rule_folder for rule in folder.rglob("*.json") if rule.is_file()]
 
     dataset_obj, dataloader, rules = prepare_data(rule_paths, list(apk_list))
     model, device, loss_fn = setup_model(len(rules))
@@ -632,9 +605,7 @@ def main(
             if precision_input.lower() == "r":
                 print("Reverting the sign of the model scores.")
                 current_model_scroes = model.state_dict()
-                current_model_scroes["rule_score"] = torch.negative(
-                    current_model_scroes["rule_score"]
-                )
+                current_model_scroes["rule_score"] = torch.negative(current_model_scroes["rule_score"])
                 model.load_state_dict(current_model_scroes)
                 print()
                 continue
@@ -665,7 +636,7 @@ def main(
                 model.load_state_dict(current_model_scroes)
                 print()
                 continue
-            
+
             elif precision_input.lower() == "c":
                 print("Proceed to the next step")
                 break
@@ -676,9 +647,7 @@ def main(
                 continue
 
             rounded_model_scores = copy.deepcopy(model_score_backup)
-            rounded_model_scores["rule_score"] = torch.round(
-                model_score_backup["rule_score"], decimals=precision
-            )
+            rounded_model_scores["rule_score"] = torch.round(model_score_backup["rule_score"], decimals=precision)
 
             model.load_state_dict(rounded_model_scores)
             print(f"Rounded rule scores (to {precision} decimal places):")
